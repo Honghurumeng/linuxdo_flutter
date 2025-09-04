@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
@@ -14,18 +15,25 @@ class LinuxDoApi {
 
   String get _baseUrl => (baseUrl ?? SettingsService.instance.value.baseUrl).trim();
 
-  Map<String, String> _headers({String? ua}) => {
+  Map<String, String> _headers({String? ua}) {
+    final cookies = SettingsService.instance.value.cookies?.trim();
+    final h = {
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         'User-Agent': ua ??
             (SettingsService.instance.value.userAgent?.trim().isNotEmpty == true
                 ? SettingsService.instance.value.userAgent!.trim()
                 :
-            // 模拟常见 Android 移动端浏览器 UA，规避部分反爬拦截
-            'Mozilla/5.0 (Linux; Android 14; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36'),
+            // 默认使用桌面 Chrome UA（按用户要求）
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'),
         'Referer': _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/',
         'Connection': 'keep-alive',
       };
+    if (cookies != null && cookies.isNotEmpty) {
+      h['Cookie'] = cookies;
+    }
+    return h;
+  }
 
   Uri _u(String path, [Map<String, dynamic>? q]) => Uri.parse(_baseUrl).replace(
         path: path,
@@ -40,6 +48,9 @@ class LinuxDoApi {
       // 允许带协议或不带协议的写法
       proxy = proxy.replaceFirst(RegExp(r'^https?://'), '');
       httpClient.findProxy = (uri) => 'PROXY $proxy; DIRECT';
+      // 打印代理信息
+      // ignore: avoid_print
+      debugPrint('[LinuxDoApi] Proxy enabled: $proxy');
     }
     return IOClient(httpClient);
   }
@@ -48,12 +59,30 @@ class LinuxDoApi {
     final client = _buildClient();
     // 首次使用 Android Chrome UA，请求失败（403/429/503）时再用 iOS Safari UA 重试一次
     try {
-      final primary = await client.get(uri, headers: _headers());
+      final h1 = _headers();
+      debugPrint('[LinuxDoApi] --> GET $uri');
+      debugPrint('[LinuxDoApi] UA: ${h1['User-Agent']}');
+      debugPrint('[LinuxDoApi] Referer: ${h1['Referer']}');
+      if (h1.containsKey('Cookie')) {
+        final cookieNames = h1['Cookie']!
+            .split(';')
+            .map((e) => e.trim())
+            .where((e) => e.contains('='))
+            .map((e) => e.split('=').first)
+            .toList();
+        debugPrint('[LinuxDoApi] Cookie: ${cookieNames.join(', ')}');
+      }
+      final primary = await client.get(uri, headers: h1);
+      debugPrint('[LinuxDoApi] <-- ${primary.statusCode} GET $uri');
       if (primary.statusCode == 403 || primary.statusCode == 429 || primary.statusCode == 503) {
+        debugPrint('[LinuxDoApi] Retrying with iOS Safari UA due to ${primary.statusCode}');
         await Future.delayed(const Duration(milliseconds: 200));
         final iosUa =
             'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
-        final fallback = await client.get(uri, headers: _headers(ua: iosUa));
+        final h2 = _headers(ua: iosUa);
+        debugPrint('[LinuxDoApi] UA2: ${h2['User-Agent']}');
+        final fallback = await client.get(uri, headers: h2);
+        debugPrint('[LinuxDoApi] <-- ${fallback.statusCode} GET $uri (retry)');
         return fallback;
       }
       return primary;
@@ -80,9 +109,13 @@ class LinuxDoApi {
       // 首次加载 latest.json
       uri = _u('/latest.json', page != null ? {'page': page} : null);
     }
+    debugPrint('[LinuxDoApi] fetchLatest url = $uri');
     final res = await _get(uri);
     if (res.statusCode != 200) {
-      throw Exception('加载首页列表失败: ${res.statusCode}');
+      if (res.statusCode == 403) {
+        throw ApiException(403, '需要登录');
+      }
+      throw ApiException(res.statusCode, '加载首页列表失败');
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return LatestPage.fromJson(data);
@@ -93,7 +126,10 @@ class LinuxDoApi {
     final uri = _u('/t/$topicId.json');
     final res = await _get(uri);
     if (res.statusCode != 200) {
-      throw Exception('加载帖子详情失败: ${res.statusCode}');
+      if (res.statusCode == 403) {
+        throw ApiException(403, '需要登录');
+      }
+      throw ApiException(res.statusCode, '加载帖子详情失败');
     }
     final data = jsonDecode(res.body) as Map<String, dynamic>;
     return TopicDetail.fromJson(data);
@@ -110,4 +146,12 @@ class LinuxDoApi {
     out = out.replaceAllMapped(RegExp(r'href="/(?!/)'), (m) => 'href="$prefix/');
     return out;
   }
+}
+
+class ApiException implements Exception {
+  final int statusCode;
+  final String message;
+  ApiException(this.statusCode, this.message);
+  @override
+  String toString() => 'ApiException($statusCode): $message';
 }

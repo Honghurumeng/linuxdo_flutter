@@ -5,6 +5,7 @@ import '../models/topic.dart';
 import '../services/settings.dart';
 import 'topic_detail_page.dart';
 import 'settings_page.dart';
+import 'web_login_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -22,6 +23,7 @@ class _HomePageState extends State<HomePage> {
   String? _moreTopicsUrl; // 服务端给出的下一页链接
   bool _loadingMore = false;
   bool _noMore = false;
+  bool _authRequired = false;
 
   @override
   void initState() {
@@ -50,6 +52,7 @@ class _HomePageState extends State<HomePage> {
       _error = null;
       _noMore = false;
       _moreTopicsUrl = null;
+      _authRequired = false;
     });
     try {
       final page = await _api.fetchLatest();
@@ -58,6 +61,12 @@ class _HomePageState extends State<HomePage> {
         _moreTopicsUrl = page.moreTopicsUrl;
         _noMore = _moreTopicsUrl == null;
       });
+    } on ApiException catch (e) {
+      if (e.statusCode == 403) {
+        setState(() => _authRequired = true);
+      } else {
+        setState(() => _error = e.toString());
+      }
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -83,6 +92,10 @@ class _HomePageState extends State<HomePage> {
           _noMore = _moreTopicsUrl == null;
         });
       }
+    } on ApiException catch (e) {
+      if (e.statusCode == 403) {
+        setState(() => _authRequired = true);
+      }
     } catch (_) {
       // 忽略翻页错误，用户可下拉刷新
     } finally {
@@ -104,6 +117,23 @@ class _HomePageState extends State<HomePage> {
         title: const Text('LinuxDo 主页帖子'),
         actions: [
           IconButton(
+            tooltip: '刷新列表',
+            icon: const Icon(Icons.refresh),
+            onPressed: _load,
+          ),
+          IconButton(
+            tooltip: '站内登录（获取Cookies）',
+            icon: const Icon(Icons.account_circle_outlined),
+            onPressed: () async {
+              final updated = await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WebLoginPage()),
+              );
+              if (updated == true) {
+                _load();
+              }
+            },
+          ),
+          IconButton(
             tooltip: '设置',
             icon: const Icon(Icons.settings_outlined),
             onPressed: () async {
@@ -111,7 +141,6 @@ class _HomePageState extends State<HomePage> {
                 MaterialPageRoute(builder: (_) => const SettingsPage()),
               );
               if (updated == true) {
-                // 页面返回时已通过监听触发刷新，这里可以按需再触发一次
                 _load();
               }
             },
@@ -125,6 +154,33 @@ class _HomePageState extends State<HomePage> {
   Widget _buildBody() {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
+    }
+    if (_authRequired) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('请先登录'),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              icon: const Icon(Icons.account_circle_outlined),
+              label: const Text('去登录'),
+              onPressed: () async {
+                final updated = await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const WebLoginPage()),
+                );
+                if (updated == true) _load();
+              },
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.refresh),
+              label: const Text('刷新'),
+              onPressed: _load,
+            )
+          ],
+        ),
+      );
     }
     if (_error != null) {
       return Center(

@@ -13,6 +13,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _baseUrl;
   late final TextEditingController _ua;
   late final TextEditingController _proxy;
+  late final TextEditingController _cookies;
   bool _saving = false;
 
   @override
@@ -22,6 +23,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _baseUrl = TextEditingController(text: s.baseUrl);
     _ua = TextEditingController(text: s.userAgent ?? '');
     _proxy = TextEditingController(text: s.proxy ?? '');
+    _cookies = TextEditingController(text: s.cookies ?? '');
   }
 
   @override
@@ -29,6 +31,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _baseUrl.dispose();
     _ua.dispose();
     _proxy.dispose();
+    _cookies.dispose();
     super.dispose();
   }
 
@@ -39,6 +42,7 @@ class _SettingsPageState extends State<SettingsPage> {
         baseUrl: _baseUrl.text.trim().isEmpty ? 'https://linux.do' : _baseUrl.text.trim(),
         userAgent: _ua.text.trim().isEmpty ? null : _ua.text.trim(),
         proxy: _proxy.text.trim().isEmpty ? null : _proxy.text.trim(),
+        cookies: _cookies.text.trim().isEmpty ? null : _cookies.text.trim(),
       );
       if (mounted) Navigator.of(context).pop(true);
     } finally {
@@ -99,9 +103,25 @@ class _SettingsPageState extends State<SettingsPage> {
             '说明：填写后，网络请求将通过该代理（需要支持 HTTPS CONNECT）。安卓模拟器想使用宿主机 127.0.0.1，请改用 10.0.2.2。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
+          const SizedBox(height: 24),
+          const Text('Cookies（可选）'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _cookies,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Cookie 请求头（如 cf_clearance=...; _forum_session=...）',
+              hintText: '格式：k1=v1; k2=v2，留空则不带 Cookie',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '可在浏览器访问站点后，从开发者工具/扩展中复制 Cookie（至少含 cf_clearance）。注意隐私，不要随意外泄。',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ],
       ),
     );
   }
 }
-

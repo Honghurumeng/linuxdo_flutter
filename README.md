@@ -37,6 +37,12 @@ LinuxDo Reader (Flutter)
     - 安卓模拟器访问宿主机可用 `10.0.2.2:7890`
     - 代理需支持 HTTPS CONNECT
 
+登录 & Cookies 获取
+
+- 首页右上角“登录”图标会打开内置 WebView 到站点主页。
+- 在 WebView 中完成站内登录或 Cloudflare 校验后，点击“保存Cookies”即可将 `document.cookie` 保存到应用，用于后续 API 请求。
+- 若仍被拦截，可搭配自定义 User-Agent/代理一起使用。
+
 注意
 
 - 请遵守站点的使用条款与 robots 设置，避免高频访问。

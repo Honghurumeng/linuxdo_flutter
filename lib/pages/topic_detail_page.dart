@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api/linuxdo_api.dart';
 import '../models/topic.dart';
+import 'web_login_page.dart';
 
 class TopicDetailPage extends StatefulWidget {
   const TopicDetailPage({super.key, required this.topicId, required this.title});
@@ -28,7 +29,16 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
+      appBar: AppBar(
+        title: Text(widget.title),
+        actions: [
+          IconButton(
+            tooltip: '刷新',
+            icon: const Icon(Icons.refresh),
+            onPressed: () => setState(() => _future = _api.fetchTopicDetail(widget.topicId)),
+          ),
+        ],
+      ),
       body: FutureBuilder<TopicDetail>(
         future: _future,
         builder: (context, snap) {
@@ -36,11 +46,41 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
+            final err = snap.error;
+            if (err is ApiException && err.statusCode == 403) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('请先登录'),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.account_circle_outlined),
+                      label: const Text('去登录'),
+                      onPressed: () async {
+                        final updated = await Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const WebLoginPage()),
+                        );
+                        if (updated == true) {
+                          setState(() => _future = _api.fetchTopicDetail(widget.topicId));
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('刷新'),
+                      onPressed: () => setState(() => _future = _api.fetchTopicDetail(widget.topicId)),
+                    ),
+                  ],
+                ),
+              );
+            }
             return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('加载失败: ${snap.error}'),
+                  Text('加载失败: $err'),
                   const SizedBox(height: 8),
                   FilledButton(
                     onPressed: () => setState(() => _future = _api.fetchTopicDetail(widget.topicId)),
