@@ -98,15 +98,34 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
             itemBuilder: (context, index) {
               final p = detail.posts[index];
               final cooked = _api.absolutizeHtml(p.cookedHtml);
+              final avatarUrl = _api.avatarUrlFromTemplate(p.avatarTemplate, size: 40);
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Text(
-                        '@${p.username}',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      SizedBox(
+                        width: 32,
+                        height: 32,
+                        child: ClipOval(
+                          child: (avatarUrl.isNotEmpty)
+                              ? Image.network(
+                                  avatarUrl,
+                                  headers: _api.imageHeaders(),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stack) => Container(
+                                    color: Colors.grey.shade200,
+                                    child: const Icon(Icons.person_outline, size: 16),
+                                  ),
+                                )
+                              : CircleAvatar(
+                                  radius: 16,
+                                  child: Text(p.username.isNotEmpty ? p.username.substring(0, 1) : '?'),
+                                ),
+                        ),
                       ),
+                      const SizedBox(width: 8),
+                      Text('@${p.username}', style: const TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(width: 8),
                       Text(
                         p.createdAt?.toLocal().toString() ?? '',
@@ -124,6 +143,58 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                         return true;
                       }
                       return false;
+                    },
+                    // 覆盖 <img> 渲染，携带 Cookie/UA 以避免 403，并支持点击外部打开
+                    customWidgetBuilder: (element) {
+                      try {
+                        if (element.localName == 'img') {
+                          final attrs = element.attributes;
+                          String raw = attrs['src'] ?? attrs['data-src'] ?? '';
+                          if (raw.isEmpty && attrs['srcset'] != null) {
+                            final ss = attrs['srcset']!;
+                            // 取 srcset 里的第一个 URL
+                            final first = ss.split(',').first.trim();
+                            final sp = first.split(' ');
+                            if (sp.isNotEmpty) raw = sp.first.trim();
+                          }
+                          if (raw.isEmpty) return null;
+                          final url = _api.absolutizeUrl(raw);
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: GestureDetector(
+                              onTap: () async {
+                                final uri = Uri.tryParse(url);
+                                if (uri != null) {
+                                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                }
+                              },
+                              child: Image.network(
+                                url,
+                                headers: _api.imageHeaders(),
+                                errorBuilder: (context, error, stack) => Container(
+                                  color: Colors.grey.shade100,
+                                  padding: const EdgeInsets.all(8),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.image_not_supported_outlined, size: 16),
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          '图片受保护，点击外部打开',
+                                          style: Theme.of(context).textTheme.bodySmall,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (_) {}
+                      return null;
                     },
                   ),
                 ],

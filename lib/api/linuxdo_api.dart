@@ -35,10 +35,27 @@ class LinuxDoApi {
     return h;
   }
 
+  Map<String, String> imageHeaders() => _headers();
+
   Uri _u(String path, [Map<String, dynamic>? q]) => Uri.parse(_baseUrl).replace(
         path: path,
         queryParameters: q?.map((k, v) => MapEntry(k, v.toString())),
       );
+
+  String absolutizeUrl(String url) {
+    if (url.isEmpty) return url;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    if (url.startsWith('//')) {
+      final scheme = Uri.parse(_baseUrl).scheme;
+      return '$scheme:$url';
+    }
+    if (url.startsWith('/')) {
+      final bu = _baseUrl.endsWith('/') ? _baseUrl.substring(0, _baseUrl.length - 1) : _baseUrl;
+      return '$bu$url';
+    }
+    // relative path fallback
+    return Uri.parse(_baseUrl).resolve(url).toString();
+  }
 
   IOClient _buildClient() {
     final s = SettingsService.instance.value;
@@ -72,23 +89,51 @@ class LinuxDoApi {
             .toList();
         debugPrint('[LinuxDoApi] Cookie: ${cookieNames.join(', ')}');
       }
-      final primary = await client.get(uri, headers: h1);
-      debugPrint('[LinuxDoApi] <-- ${primary.statusCode} GET $uri');
-      if (primary.statusCode == 403 || primary.statusCode == 429 || primary.statusCode == 503) {
-        debugPrint('[LinuxDoApi] Retrying with iOS Safari UA due to ${primary.statusCode}');
+      var response = await client.get(uri, headers: h1);
+      debugPrint('[LinuxDoApi] <-- ${response.statusCode} GET $uri');
+      if (response.statusCode == 403 || response.statusCode == 429 || response.statusCode == 503) {
+        debugPrint('[LinuxDoApi] Retrying with iOS Safari UA due to ${response.statusCode}');
         await Future.delayed(const Duration(milliseconds: 200));
         final iosUa =
             'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
         final h2 = _headers(ua: iosUa);
         debugPrint('[LinuxDoApi] UA2: ${h2['User-Agent']}');
-        final fallback = await client.get(uri, headers: h2);
-        debugPrint('[LinuxDoApi] <-- ${fallback.statusCode} GET $uri (retry)');
-        return fallback;
+        response = await client.get(uri, headers: h2);
+        debugPrint('[LinuxDoApi] <-- ${response.statusCode} GET $uri (retry)');
       }
-      return primary;
+      _mergeSetCookie(response);
+      return response;
     } finally {
       client.close();
     }
+  }
+
+  // 从响应头中合并 Set-Cookie（若有）到本地 Cookies
+  void _mergeSetCookie(http.Response res) {
+    final setCookie = res.headers['set-cookie'];
+    if (setCookie == null || setCookie.isEmpty) return;
+    final existing = SettingsService.instance.value.cookies ?? '';
+    final current = <String, String>{}
+      ..addEntries(existing.split(';').map((e) => e.trim()).where((e) => e.contains('=')).map((kv) {
+        final i = kv.indexOf('=');
+        final name = kv.substring(0, i).trim();
+        final value = kv.substring(i + 1).trim();
+        return MapEntry(name, value);
+      }));
+    final reg = RegExp(r'(?:(?<=^)|(?<=, ))([^=; ,]+)=([^;]+)');
+    for (final m in reg.allMatches(setCookie)) {
+      final name = m.group(1);
+      final value = m.group(2);
+      if (name != null && value != null) {
+        if (name.toLowerCase() == 'path' || name.toLowerCase() == 'expires' || name.toLowerCase() == 'httponly' || name.toLowerCase() == 'secure' || name.toLowerCase() == 'samesite' || name.toLowerCase() == 'domain') {
+          continue;
+        }
+        current[name] = value;
+      }
+    }
+    final merged = current.entries.map((e) => '${e.key}=${e.value}').join('; ');
+    SettingsService.instance.update(cookies: merged);
+    debugPrint('[LinuxDoApi] Set-Cookie merged -> ${current.keys.join(', ')}');
   }
 
   Future<LatestPage> fetchLatest({String? moreTopicsUrl, int? page}) async {
@@ -142,9 +187,24 @@ class LinuxDoApi {
     var out = html;
     // src="/xxx" -> src="https://linux.do/xxx"
     out = out.replaceAllMapped(RegExp(r'src="/(?!/)'), (m) => 'src="$prefix/');
+    // data-src 懒加载 -> src
+    out = out.replaceAllMapped(RegExp(r'data-src="/(?!/)'), (m) => 'src="$prefix/');
+    // srcset 相对地址补全
+    out = out.replaceAllMapped(RegExp(r'srcset="/(?!/)'), (m) => 'srcset="$prefix/');
     // href="/xxx" -> href="https://linux.do/xxx"
     out = out.replaceAllMapped(RegExp(r'href="/(?!/)'), (m) => 'href="$prefix/');
     return out;
+  }
+
+  // 根据 avatar_template 生成头像地址
+  String avatarUrlFromTemplate(String? template, {int size = 48}) {
+    if (template == null || template.isEmpty) return '';
+    var t = template.replaceAll('{size}', size.toString());
+    if (t.startsWith('/')) {
+      final bu = _baseUrl.endsWith('/') ? _baseUrl.substring(0, _baseUrl.length - 1) : _baseUrl;
+      t = '$bu$t';
+    }
+    return t;
   }
 }
 

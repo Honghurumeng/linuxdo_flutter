@@ -51,12 +51,14 @@ class PostItem {
   final String username;
   final DateTime? createdAt;
   final String cookedHtml; // discourse 已经渲染好的 HTML
+  final String? avatarTemplate;
 
   PostItem({
     required this.id,
     required this.username,
     required this.cookedHtml,
     this.createdAt,
+    this.avatarTemplate,
   });
 
   factory PostItem.fromJson(Map<String, dynamic> json) => PostItem(
@@ -66,6 +68,7 @@ class PostItem {
             ? DateTime.tryParse(json['created_at'].toString())
             : null,
         cookedHtml: (json['cooked'] ?? '').toString(),
+        avatarTemplate: json['avatar_template']?.toString(),
       );
 }
 
@@ -96,18 +99,38 @@ class TopicDetail {
 class LatestPage {
   final List<TopicSummary> topics;
   final String? moreTopicsUrl; // 例如 /latest?no_definitions=true&page=1
+  final List<UserBrief> users;
 
-  LatestPage({required this.topics, required this.moreTopicsUrl});
+  LatestPage({required this.topics, required this.moreTopicsUrl, required this.users});
 
   factory LatestPage.fromJson(Map<String, dynamic> json) {
     final list = (json['topic_list'] as Map?) ?? const {};
     final topics = (list['topics'] as List?) ?? const [];
+    final users = (json['users'] as List?) ?? const [];
     return LatestPage(
       topics: topics
           .whereType<Map<String, dynamic>>()
           .map(TopicSummary.fromJson)
           .toList(),
       moreTopicsUrl: list['more_topics_url']?.toString(),
+      users: users
+          .whereType<Map<String, dynamic>>()
+          .map(UserBrief.fromJson)
+          .toList(),
     );
   }
+}
+
+class UserBrief {
+  final int id;
+  final String username;
+  final String? avatarTemplate;
+
+  UserBrief({required this.id, required this.username, this.avatarTemplate});
+
+  factory UserBrief.fromJson(Map<String, dynamic> json) => UserBrief(
+        id: json['id'] as int,
+        username: (json['username'] ?? '').toString(),
+        avatarTemplate: json['avatar_template']?.toString(),
+      );
 }

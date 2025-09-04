@@ -24,6 +24,7 @@ class _HomePageState extends State<HomePage> {
   bool _loadingMore = false;
   bool _noMore = false;
   bool _authRequired = false;
+  Map<int, UserBrief> _userMap = const {};
 
   @override
   void initState() {
@@ -60,6 +61,7 @@ class _HomePageState extends State<HomePage> {
         _topics = page.topics;
         _moreTopicsUrl = page.moreTopicsUrl;
         _noMore = _moreTopicsUrl == null;
+        _userMap = {for (final u in page.users) u.id: u};
       });
     } on ApiException catch (e) {
       if (e.statusCode == 403) {
@@ -90,6 +92,7 @@ class _HomePageState extends State<HomePage> {
           _topics = [..._topics, ...page.topics];
           _moreTopicsUrl = page.moreTopicsUrl;
           _noMore = _moreTopicsUrl == null;
+          _userMap.addAll({for (final u in page.users) u.id: u});
         });
       }
     } on ApiException catch (e) {
@@ -222,7 +225,29 @@ class _HomePageState extends State<HomePage> {
             );
           }
           final t = _topics[index];
+          final authorId = t.postersUserIds.isNotEmpty ? t.postersUserIds.first : null;
+          final user = authorId != null ? _userMap[authorId] : null;
+          final avatarUrl = _api.avatarUrlFromTemplate(user?.avatarTemplate, size: 48);
           return ListTile(
+            leading: SizedBox(
+              width: 40,
+              height: 40,
+              child: ClipOval(
+                child: (avatarUrl.isNotEmpty)
+                    ? Image.network(
+                        avatarUrl,
+                        headers: _api.imageHeaders(),
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stack) => Container(
+                          color: Colors.grey.shade200,
+                          child: const Icon(Icons.person_outline),
+                        ),
+                      )
+                    : CircleAvatar(
+                        child: Text((t.title.isNotEmpty ? t.title.substring(0, 1) : '#')),
+                      ),
+              ),
+            ),
             title: Text(t.title),
             subtitle: Text('#${t.id}  ·  回复: ${t.replyCount ?? t.postsCount ?? '-'}  ·  浏览: ${t.views ?? '-'}  ·  赞: ${t.likeCount ?? '-'}'),
             onTap: () {
