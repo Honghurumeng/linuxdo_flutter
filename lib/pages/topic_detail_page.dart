@@ -69,20 +69,11 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
             },
           ),
           IconButton(
-            tooltip: '在WebView中打开',
+            tooltip: '在浏览器中查看',
             icon: const Icon(Icons.open_in_browser),
             onPressed: () async {
-              final url = 'https://linux.do/t/${widget.topicId}';
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => WebLoginPage(
-                    initialUrl: url,
-                    showAppBarTitle: '详情',
-                    showUrlBar: false,
-                    showSaveButton: false,
-                  ),
-                ),
-              );
+              final uri = Uri.parse('https://linux.do/t/${widget.topicId}');
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
             },
           ),
           IconButton(
