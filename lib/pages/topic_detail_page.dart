@@ -319,6 +319,47 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                       }
                       return false;
                     },
+                    customStylesBuilder: (element) {
+                       if (element.classes.contains('quote') || element.classes.contains('quote-modified')) {
+                         return {
+                           'background-color': '#f5f5f5',
+                           'border-left': '3px solid #ddd',
+                           'padding': '12px',
+                           'margin': '8px 0',
+                           'border-radius': '4px',
+                           'font-size': '14px',
+                           'color': '#666',
+                         };
+                       }
+                       if (element.localName == 'blockquote') {
+                         return {
+                           'margin': '0',
+                           'padding': '0',
+                         };
+                       }
+                       if (element.classes.contains('title')) {
+                         return {
+                           'display': 'flex',
+                           'align-items': 'center',
+                           'margin-bottom': '8px',
+                           'color': '#333',
+                         };
+                       }
+                       if (element.localName == 'img' && element.attributes['class']?.contains('avatar') == true) {
+                         return {
+                           'width': '24px',
+                           'height': '24px',
+                           'border-radius': '50%',
+                           'margin-right': '8px',
+                         };
+                       }
+                       if (element.classes.contains('quote-title__text-content')) {
+                         return {
+                           'flex': '1',
+                         };
+                       }
+                       return null;
+                     },
                     // 覆盖 <img> 渲染，携带 Cookie/UA 以避免 403，并支持点击外部打开
                     customWidgetBuilder: (element) {
                       try {
