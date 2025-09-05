@@ -23,6 +23,7 @@ class TopicDetailPage extends StatefulWidget {
 class _TopicDetailPageState extends State<TopicDetailPage> {
   final _api = LinuxDoApi();
   late Future<TopicDetail> _future;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -31,11 +32,46 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
   }
 
   @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: const Text('详情'),
         actions: [
+          IconButton(
+            tooltip: '跳到顶部',
+            icon: const Icon(Icons.vertical_align_top),
+            onPressed: () {
+              // 滚动到顶部
+              _scrollController.animateTo(
+                0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            },
+          ),
+          IconButton(
+            tooltip: '在WebView中打开',
+            icon: const Icon(Icons.open_in_browser),
+            onPressed: () async {
+              final url = 'https://linux.do/t/${widget.topicId}';
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => WebLoginPage(
+                    initialUrl: url,
+                    showAppBarTitle: '详情',
+                    showUrlBar: false,
+                    showSaveButton: false,
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: '刷新',
             icon: const Icon(Icons.refresh),
@@ -96,11 +132,57 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
           }
           final detail = snap.data!;
           return ListView.separated(
+            controller: _scrollController,
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            itemCount: detail.posts.length,
-            separatorBuilder: (_, __) => const Divider(height: 24),
+            itemCount: detail.posts.length + 1, // +1 for title header
+            separatorBuilder: (context, index) {
+              // 在标题卡片(index=0)和第一个帖子之间不显示分割线
+              if (index == 0) {
+                return const SizedBox(height: 8);
+              }
+              return const Divider(height: 24);
+            },
             itemBuilder: (context, index) {
-              final p = detail.posts[index];
+              if (index == 0) {
+                // 显示完整标题
+                return Container(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Theme.of(context).shadowColor.withOpacity(0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.title,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                      if (detail.posts.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '作者: @${detail.posts[0].username} · ${detail.posts[0].createdAt?.toLocal().toString().split('.')[0] ?? ''}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }
+              final p = detail.posts[index - 1]; // 调整索引
               final cooked = _api.absolutizeHtml(p.cookedHtml);
               final avatarUrl = _api.avatarUrlFromTemplate(p.avatarTemplate, size: 40);
               if (kDebugMode && avatarUrl.isNotEmpty) {

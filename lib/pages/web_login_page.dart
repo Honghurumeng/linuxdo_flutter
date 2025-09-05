@@ -7,7 +7,18 @@ import '../services/settings.dart';
 import '../services/native_cookie.dart';
 
 class WebLoginPage extends StatefulWidget {
-  const WebLoginPage({super.key});
+  const WebLoginPage({
+    super.key, 
+    this.initialUrl,
+    this.showAppBarTitle = '站内登录',
+    this.showUrlBar = true,
+    this.showSaveButton = true,
+  });
+  
+  final String? initialUrl;
+  final String showAppBarTitle;
+  final bool showUrlBar;
+  final bool showSaveButton;
 
   @override
   State<WebLoginPage> createState() => _WebLoginPageState();
@@ -22,7 +33,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
   void initState() {
     super.initState();
     final baseUrl = SettingsService.instance.value.baseUrl;
-    final loginUrl = Uri.parse(baseUrl).resolve('/login');
+    final targetUrl = widget.initialUrl ?? Uri.parse(baseUrl).resolve('/login').toString();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
@@ -35,7 +46,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
           _progress = 0;
         }),
       ))
-      ..loadRequest(loginUrl);
+      ..loadRequest(Uri.parse(targetUrl));
   }
 
   Future<void> _saveCookies() async {
@@ -117,7 +128,7 @@ class _WebLoginPageState extends State<WebLoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('站内登录'),
+        title: Text(widget.showAppBarTitle),
         actions: [
           IconButton(
             tooltip: '刷新网页',
@@ -134,15 +145,16 @@ class _WebLoginPageState extends State<WebLoginPage> {
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Text(
-              _currentUrl,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
+          if (widget.showUrlBar)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Text(
+                _currentUrl,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
-          ),
           Expanded(child: WebViewWidget(controller: _controller)),
           SafeArea(
             top: false,
@@ -167,14 +179,15 @@ class _WebLoginPageState extends State<WebLoginPage> {
                   icon: const Icon(Icons.arrow_forward),
                 ),
                 const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilledButton.icon(
-                    onPressed: _saveCookies,
-                    icon: const Icon(Icons.save_alt),
-                    label: const Text('保存Cookies并返回'),
+                if (widget.showSaveButton)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilledButton.icon(
+                      onPressed: _saveCookies,
+                      icon: const Icon(Icons.save_alt),
+                      label: const Text('保存Cookies并返回'),
+                    ),
                   ),
-                ),
               ],
             ),
           )
