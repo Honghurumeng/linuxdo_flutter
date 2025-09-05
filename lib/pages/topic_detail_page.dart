@@ -284,6 +284,23 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                           ],
                         ),
                       ),
+                      if (detail.posts.isNotEmpty && p.username == detail.posts[0].username)
+                        Container(
+                          margin: const EdgeInsets.only(left: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Text(
+                            '楼主',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
                       const SizedBox(width: 8),
                       Text(
                         p.createdAt?.toLocal().toString() ?? '',
