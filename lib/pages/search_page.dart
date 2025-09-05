@@ -7,6 +7,7 @@ import '../widgets/secure_image.dart';
 import 'image_viewer_page.dart';
 import 'topic_detail_page.dart';
 import 'web_login_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -24,6 +25,31 @@ class _SearchPageState extends State<SearchPage> {
   bool _authRequired = false;
   List<TopicSummary> _results = const [];
   Map<int, UserBrief> _userMap = const {};
+  static const _kHistoryKey = 'search_history';
+  List<String> _history = const [];
+
+  Future<void> _loadHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _history = prefs.getStringList(_kHistoryKey) ?? [];
+    });
+  }
+
+  Future<void> _saveHistory(String query) async {
+    final prefs = await SharedPreferences.getInstance();
+    var list = List<String>.from(_history);
+    list.removeWhere((e) => e == query);
+    list.insert(0, query);
+    if (list.length > 20) list = list.sublist(0, 20);
+    await prefs.setStringList(_kHistoryKey, list);
+    setState(() => _history = list);
+  }
+
+  Future<void> _clearHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kHistoryKey);
+    setState(() => _history = []);
+  }
 
   Future<void> _doSearch(String q) async {
     final query = q.trim();
@@ -39,6 +65,7 @@ class _SearchPageState extends State<SearchPage> {
         _results = res.topics;
         _userMap = {for (final u in res.users) u.id: u};
       });
+      await _saveHistory(query);
     } on ApiException catch (e) {
       if (e.statusCode == 403) {
         setState(() => _authRequired = true);
@@ -57,6 +84,7 @@ class _SearchPageState extends State<SearchPage> {
     super.initState();
     // autofocus 稍后在第一帧完成后请求，避免 build 报错
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+    _loadHistory();
   }
 
   @override
@@ -152,7 +180,45 @@ class _SearchPageState extends State<SearchPage> {
       );
     }
     if (_results.isEmpty) {
-      return const Center(child: Text('输入关键词进行搜索'));
+      if (_history.isEmpty) {
+        return const Center(child: Text('输入关键词进行搜索'));
+      }
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: SingleChildScrollView(
+          child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text('搜索历史', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _clearHistory,
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('清空'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _history.map((h) {
+                return ActionChip(
+                  label: Text(h, overflow: TextOverflow.ellipsis),
+                  onPressed: () {
+                    _controller.text = h;
+                    _focusNode.unfocus();
+                    _doSearch(h);
+                  },
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+      );
     }
     return ListView.separated(
       itemCount: _results.length,
@@ -209,4 +275,3 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 }
-
