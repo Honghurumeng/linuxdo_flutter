@@ -222,6 +222,7 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
               if (kDebugMode && avatarUrl.isNotEmpty) {
                 debugPrint('[Avatar] Detail user=@${p.username} url=$avatarUrl');
               }
+              final createdStr = p.createdAt?.toLocal().toString().split('.')[0] ?? '';
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -260,52 +261,61 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      RichText(
-                        text: TextSpan(
+                      Expanded(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            if (p.name != null && p.name!.isNotEmpty)
-                              TextSpan(
-                                text: p.name,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black,
+                            RichText(
+                              text: TextSpan(
+                                children: [
+                                  if (p.name != null && p.name!.isNotEmpty)
+                                    TextSpan(
+                                      text: p.name,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black,
+                                      ),
+                                    ),
+                                  if (p.name != null && p.name!.isNotEmpty)
+                                    const TextSpan(text: ' '),
+                                  TextSpan(
+                                    text: '@${p.username}',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w300,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              softWrap: true,
+                            ),
+                            if (detail.posts.isNotEmpty && p.username == detail.posts[0].username)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Text(
+                                  '楼主',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
                                 ),
                               ),
-                            if (p.name != null && p.name!.isNotEmpty)
-                              const TextSpan(text: ' '),
-                            TextSpan(
-                              text: '@${p.username}',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w300,
-                                color: Colors.grey,
-                              ),
+                            Text(
+                              createdStr,
+                              style: Theme.of(context).textTheme.bodySmall,
+                              softWrap: true,
                             ),
                           ],
                         ),
-                      ),
-                      if (detail.posts.isNotEmpty && p.username == detail.posts[0].username)
-                        Container(
-                          margin: const EdgeInsets.only(left: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.blue,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Text(
-                            '楼主',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      const SizedBox(width: 8),
-                      Text(
-                        p.createdAt?.toLocal().toString() ?? '',
-                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
                   ),
