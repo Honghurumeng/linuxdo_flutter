@@ -12,10 +12,20 @@ import '../widgets/secure_image.dart';
 import 'image_viewer_page.dart';
 
 class TopicDetailPage extends StatefulWidget {
-  const TopicDetailPage({super.key, required this.topicId, required this.title});
+  const TopicDetailPage({
+    super.key,
+    required this.topicId,
+    required this.title,
+    this.initialPostNumber,
+    this.initialPostId,
+  });
 
   final int topicId;
   final String title;
+  // 进入详情页时，若提供了楼层号，则尝试自动滚动到该楼层
+  final int? initialPostNumber;
+  // 若提供帖子 ID，优先按 ID 精准定位
+  final int? initialPostId;
 
   @override
   State<TopicDetailPage> createState() => _TopicDetailPageState();
@@ -25,6 +35,8 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
   final _api = LinuxDoApi();
   late Future<TopicDetail> _future;
   final ScrollController _scrollController = ScrollController();
+  final Map<int, GlobalKey> _itemKeys = {}; // 列表 index -> key（含标题头部）
+  bool _didAutoScroll = false;
 
   @override
   void initState() {
@@ -132,6 +144,8 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
             );
           }
           final detail = snap.data!;
+          // 数据到达后尝试滚动到指定楼层（若提供）
+          WidgetsBinding.instance.addPostFrameCallback((_) => _maybeAutoScroll(detail));
           return ListView.separated(
             controller: _scrollController,
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -223,7 +237,10 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                 debugPrint('[Avatar] Detail user=@${p.username} url=$avatarUrl');
               }
               final createdStr = p.createdAt?.toLocal().toString().split('.')[0] ?? '';
-              return Column(
+              final key = _itemKeys.putIfAbsent(index, () => GlobalKey());
+              return Container(
+                key: key,
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -549,11 +566,75 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                     },
                   ),
                 ],
+              ),
               );
             },
           );
         },
       ),
     );
+  }
+
+  void _maybeAutoScroll(TopicDetail detail) {
+    if (_didAutoScroll) return;
+    // 1) 优先使用 postId 精准定位
+    int? listIndex;
+    if (widget.initialPostId != null) {
+      final idx = detail.posts.indexWhere((e) => e.id == widget.initialPostId);
+      if (idx >= 0) listIndex = idx + 1; // +1 for header
+    }
+    // 2) 其次使用 postNumber
+    if (listIndex == null) {
+      final target = widget.initialPostNumber;
+      if (target == null || target <= 1) {
+        _didAutoScroll = true; // 1 楼或未提供则无需滚动
+        return;
+      }
+      final maxPostIndex = detail.posts.length - 1;
+      if (maxPostIndex < 0) {
+        _didAutoScroll = true;
+        return;
+      }
+      final postIdx = (target - 1).clamp(0, maxPostIndex); // 0-based in posts
+      listIndex = postIdx + 1; // +1 for header
+    }
+
+    // 先粗略跳转到一个大致位置，促使目标 item 构建出来
+    final approxOffset = ((listIndex - 1) * 220.0).toDouble();
+    if (_scrollController.hasClients) {
+      try {
+        _scrollController.jumpTo(
+          approxOffset.clamp(
+            0.0,
+            _scrollController.position.maxScrollExtent,
+          ),
+        );
+      } catch (_) {}
+    }
+
+    // 再尝试精确对齐到目标项
+    Future<void> tryEnsureVisible([int retry = 0]) async {
+      final key = _itemKeys[listIndex!];
+      final ctx = key?.currentContext;
+      if (ctx != null && mounted) {
+        try {
+          await Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 300),
+            alignment: 0.05,
+          );
+          _didAutoScroll = true;
+          return;
+        } catch (_) {}
+      }
+      if (retry < 6 && mounted) {
+        await Future.delayed(const Duration(milliseconds: 120));
+        tryEnsureVisible(retry + 1);
+      } else {
+        _didAutoScroll = true;
+      }
+    }
+
+    tryEnsureVisible(0);
   }
 }

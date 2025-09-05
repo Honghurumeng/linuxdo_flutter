@@ -202,7 +202,10 @@ class LinuxDoApi {
 
   // 搜索帖子（按关键词），返回主题列表与相关用户
   Future<SearchResult> searchTopics(String query, {int? page}) async {
-    final params = <String, dynamic>{'q': query};
+    // 按用户习惯：不额外添加 include_* 参数，完全由 query 决定行为
+    final params = <String, dynamic>{
+      'q': query,
+    };
     if (page != null) params['page'] = page;
     final uri = _u('/search.json', params);
     final res = await _get(uri);

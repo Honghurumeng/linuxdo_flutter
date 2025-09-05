@@ -141,12 +141,14 @@ class UserBrief {
 class SearchResult {
   final List<TopicSummary> topics;
   final List<UserBrief> users;
+  final List<SearchPost> posts; // 命中的帖子列表（含楼层/时间/摘要）
 
-  SearchResult({required this.topics, required this.users});
+  SearchResult({required this.topics, required this.users, required this.posts});
 
   factory SearchResult.fromJson(Map<String, dynamic> json) {
     final topics = (json['topics'] as List?) ?? const [];
     final users = (json['users'] as List?) ?? const [];
+    final posts = (json['posts'] as List?) ?? const [];
     return SearchResult(
       topics: topics
           .whereType<Map<String, dynamic>>()
@@ -156,6 +158,43 @@ class SearchResult {
           .whereType<Map<String, dynamic>>()
           .map(UserBrief.fromJson)
           .toList(),
+      posts: posts
+          .whereType<Map<String, dynamic>>()
+          .map(SearchPost.fromJson)
+          .toList(),
     );
   }
+}
+
+class SearchPost {
+  final int id; // 帖子 ID
+  final int topicId; // 主题 ID
+  final int? postNumber; // 楼层号
+  final String username; // 作者用户名
+  final String? name; // 昵称
+  final String blurb; // 命中片段（HTML）
+  final DateTime? createdAt; // 发帖时间
+  final String? avatarTemplate;
+
+  SearchPost({
+    required this.id,
+    required this.topicId,
+    required this.username,
+    required this.blurb,
+    this.postNumber,
+    this.name,
+    this.createdAt,
+    this.avatarTemplate,
+  });
+
+  factory SearchPost.fromJson(Map<String, dynamic> json) => SearchPost(
+        id: json['id'] is int ? json['id'] as int : int.tryParse('${json['id']}') ?? 0,
+        topicId: json['topic_id'] is int ? json['topic_id'] as int : int.tryParse('${json['topic_id']}') ?? 0,
+        username: (json['username'] ?? '').toString(),
+        name: json['name']?.toString(),
+        blurb: (json['blurb'] ?? '').toString(),
+        postNumber: json['post_number'] is int ? json['post_number'] as int : int.tryParse('${json['post_number']}'),
+        createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) : null,
+        avatarTemplate: json['avatar_template']?.toString(),
+      );
 }
