@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
+import 'dart:typed_data';
 
 import '../models/topic.dart';
 import '../services/settings.dart';
@@ -35,7 +36,26 @@ class LinuxDoApi {
     return h;
   }
 
-  Map<String, String> imageHeaders() => _headers();
+  // 已简化为直接使用默认 GET 加载图片，不再提供专门的图片头部
+  Map<String, String> imageHeaders() {
+    final s = SettingsService.instance.value;
+    final ua = (s.userAgent?.trim().isNotEmpty == true)
+        ? s.userAgent!.trim()
+        : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36';
+    final ref = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
+    final h = <String, String>{
+      'User-Agent': ua,
+      'Referer': ref,
+      'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Connection': 'keep-alive',
+    };
+    final cookies = s.cookies?.trim();
+    if (cookies != null && cookies.isNotEmpty) {
+      h['Cookie'] = cookies;
+    }
+    return h;
+  }
 
   Uri _u(String path, [Map<String, dynamic>? q]) => Uri.parse(_baseUrl).replace(
         path: path,
@@ -194,6 +214,22 @@ class LinuxDoApi {
       t = '$bu$t';
     }
     return t;
+  }
+
+  // 兜底：以带头方式抓取图片字节，便于在 CF/鉴权场景下展示
+  Future<Uint8List> fetchImageBytes(String url) async {
+    final client = _buildClient();
+    try {
+      final uri = Uri.parse(url);
+      final res = await client.get(uri, headers: imageHeaders());
+      debugPrint('[LinuxDoApi] <-- ${res.statusCode} IMG $uri');
+      if (res.statusCode != 200) {
+        throw HttpException('HTTP ${res.statusCode}', uri: uri);
+      }
+      return res.bodyBytes;
+    } finally {
+      client.close();
+    }
   }
 }
 

@@ -1,0 +1,6 @@
+策略一：两步法
+由于Flutter的Image.network无法单独为第一个请求发送Cookie以通过Cloudflare的挑战，因此需要一个两步过程：
+
+解决Cloudflare挑战： 使用一个不可见的InAppWebView来托管照片的网页。这个WebView在后台解决Cloudflare的JavaScript挑战，从而生成cf_clearance Cookie。
+
+获取和显示照片： 一旦Cookie可用，就从InAppWebView中提取它。然后使用dio HTTP客户端请求照片，并在标头中传递cf_clearance Cookie。接收到的照片字节随后使用Image.memory小部件显示。

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 
 import 'pages/home_page.dart';
 import 'services/settings.dart';
+import 'services/http_overrides.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  HttpOverrides.global = GlobalHttpOverrides();
   await SettingsService.instance.load();
   runApp(const MyApp());
 }

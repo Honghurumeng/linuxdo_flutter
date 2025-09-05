@@ -6,6 +6,7 @@ import '../services/settings.dart';
 import 'topic_detail_page.dart';
 import 'settings_page.dart';
 import 'web_login_page.dart';
+import '../widgets/secure_image.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -228,17 +229,21 @@ class _HomePageState extends State<HomePage> {
           final authorId = t.postersUserIds.isNotEmpty ? t.postersUserIds.first : null;
           final user = authorId != null ? _userMap[authorId] : null;
           final avatarUrl = _api.avatarUrlFromTemplate(user?.avatarTemplate, size: 48);
+          if (avatarUrl.isNotEmpty) {
+            debugPrint('[Avatar] Home user=${user?.username ?? '-'} url=$avatarUrl');
+          }
           return ListTile(
             leading: SizedBox(
               width: 40,
               height: 40,
               child: ClipOval(
                 child: (avatarUrl.isNotEmpty)
-                    ? Image.network(
-                        avatarUrl,
-                        headers: _api.imageHeaders(),
+                    ? SecureImage(
+                        url: avatarUrl,
+                        width: 40,
+                        height: 40,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stack) => Container(
+                        error: Container(
                           color: Colors.grey.shade200,
                           child: const Icon(Icons.person_outline),
                         ),

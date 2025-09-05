@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api/linuxdo_api.dart';
 import '../models/topic.dart';
 import 'web_login_page.dart';
+import '../widgets/secure_image.dart';
 
 class TopicDetailPage extends StatefulWidget {
   const TopicDetailPage({super.key, required this.topicId, required this.title});
@@ -99,6 +100,9 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
               final p = detail.posts[index];
               final cooked = _api.absolutizeHtml(p.cookedHtml);
               final avatarUrl = _api.avatarUrlFromTemplate(p.avatarTemplate, size: 40);
+              if (avatarUrl.isNotEmpty) {
+                debugPrint('[Avatar] Detail user=@${p.username} url=$avatarUrl');
+              }
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -109,11 +113,12 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                         height: 32,
                         child: ClipOval(
                           child: (avatarUrl.isNotEmpty)
-                              ? Image.network(
-                                  avatarUrl,
-                                  headers: _api.imageHeaders(),
+                              ? SecureImage(
+                                  url: avatarUrl,
+                                  width: 32,
+                                  height: 32,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stack) => Container(
+                                  error: Container(
                                     color: Colors.grey.shade200,
                                     child: const Icon(Icons.person_outline, size: 16),
                                   ),
@@ -159,6 +164,7 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                           }
                           if (raw.isEmpty) return null;
                           final url = _api.absolutizeUrl(raw);
+                          debugPrint('[Image] Detail url=$url');
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             child: GestureDetector(
@@ -168,10 +174,10 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                                   await launchUrl(uri, mode: LaunchMode.externalApplication);
                                 }
                               },
-                              child: Image.network(
-                                url,
-                                headers: _api.imageHeaders(),
-                                errorBuilder: (context, error, stack) => Container(
+                              child: SecureImage(
+                                url: url,
+                                fit: BoxFit.contain,
+                                error: Container(
                                   color: Colors.grey.shade100,
                                   padding: const EdgeInsets.all(8),
                                   child: Row(
