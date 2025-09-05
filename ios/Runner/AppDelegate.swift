@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import WebKit
+import Photos
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -10,8 +11,8 @@ import WebKit
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     let controller : FlutterViewController = window?.rootViewController as! FlutterViewController
-    let channel = FlutterMethodChannel(name: "app.webview.cookies", binaryMessenger: controller.binaryMessenger)
-    channel.setMethodCallHandler { call, result in
+    let cookieChannel = FlutterMethodChannel(name: "app.webview.cookies", binaryMessenger: controller.binaryMessenger)
+    cookieChannel.setMethodCallHandler { call, result in
       if call.method == "getCookies" {
         guard let args = call.arguments as? [String: Any], let urlStr = args["url"] as? String,
               let url = URL(string: urlStr.hasPrefix("http") ? urlStr : "https://\(urlStr)") else {
@@ -58,6 +59,26 @@ import WebKit
 
         group.notify(queue: .main) {
           result(headerParts.joined(separator: "; "))
+        }
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    // Media channel
+    let mediaChannel = FlutterMethodChannel(name: "app.media", binaryMessenger: controller.binaryMessenger)
+    mediaChannel.setMethodCallHandler { call, result in
+      if call.method == "saveImage" {
+        guard let args = call.arguments as? [String: Any],
+              let bytes = args["bytes"] as? FlutterStandardTypedData,
+              let image = UIImage(data: bytes.data) else {
+          result(false)
+          return
+        }
+        PHPhotoLibrary.shared().performChanges({
+          PHAssetCreationRequest.creationRequestForAsset(from: image)
+        }) { success, _ in
+          result(success)
         }
       } else {
         result(FlutterMethodNotImplemented)

@@ -85,9 +85,10 @@ class LinuxDoApi {
       // 允许带协议或不带协议的写法
       proxy = proxy.replaceFirst(RegExp(r'^https?://'), '');
       httpClient.findProxy = (uri) => 'PROXY $proxy; DIRECT';
-      // 打印代理信息
-      // ignore: avoid_print
-      debugPrint('[LinuxDoApi] Proxy enabled: $proxy');
+      // 打印代理信息（仅 Debug）
+      if (kDebugMode) {
+        debugPrint('[LinuxDoApi] Proxy enabled: $proxy');
+      }
     }
     return IOClient(httpClient);
   }
@@ -96,9 +97,11 @@ class LinuxDoApi {
     final client = _buildClient();
     try {
       final h1 = _headers();
-      debugPrint('[LinuxDoApi] --> GET $uri');
-      debugPrint('[LinuxDoApi] UA: ${h1['User-Agent']}');
-      debugPrint('[LinuxDoApi] Referer: ${h1['Referer']}');
+      if (kDebugMode) {
+        debugPrint('[LinuxDoApi] --> GET $uri');
+        debugPrint('[LinuxDoApi] UA: ${h1['User-Agent']}');
+        debugPrint('[LinuxDoApi] Referer: ${h1['Referer']}');
+      }
       if (h1.containsKey('Cookie') && (h1['Cookie']?.trim().isNotEmpty == true)) {
         final cookieNames = h1['Cookie']!
             .split(';')
@@ -106,10 +109,14 @@ class LinuxDoApi {
             .where((e) => e.contains('='))
             .map((e) => e.split('=').first)
             .toList();
-        debugPrint('[LinuxDoApi] Cookie: ${cookieNames.join(', ')}');
+        if (kDebugMode) {
+          debugPrint('[LinuxDoApi] Cookie: ${cookieNames.join(', ')}');
+        }
       }
       final response = await client.get(uri, headers: h1);
-      debugPrint('[LinuxDoApi] <-- ${response.statusCode} GET $uri');
+      if (kDebugMode) {
+        debugPrint('[LinuxDoApi] <-- ${response.statusCode} GET $uri');
+      }
       _mergeSetCookie(response);
       return response;
     } finally {
@@ -142,7 +149,9 @@ class LinuxDoApi {
     }
     final merged = current.entries.map((e) => '${e.key}=${e.value}').join('; ');
     SettingsService.instance.update(cookies: merged);
-    debugPrint('[LinuxDoApi] Set-Cookie merged -> ${current.keys.join(', ')}');
+    if (kDebugMode) {
+      debugPrint('[LinuxDoApi] Set-Cookie merged -> ${current.keys.join(', ')}');
+    }
   }
 
   Future<LatestPage> fetchLatest({String? moreTopicsUrl, int? page}) async {
@@ -163,7 +172,9 @@ class LinuxDoApi {
       // 首次加载 latest.json
       uri = _u('/latest.json', page != null ? {'page': page} : null);
     }
-    debugPrint('[LinuxDoApi] fetchLatest url = $uri');
+    if (kDebugMode) {
+      debugPrint('[LinuxDoApi] fetchLatest url = $uri');
+    }
     final res = await _get(uri);
     if (res.statusCode != 200) {
       if (res.statusCode == 403) {
@@ -216,17 +227,45 @@ class LinuxDoApi {
     return t;
   }
 
+  // 将 optimized 的图片 URL 转为 original 原图 URL（若匹配）
+  String toOriginalImageUrl(String url) {
+    try {
+      final u = Uri.parse(url);
+      final ps = List<String>.from(u.pathSegments);
+      if (ps.length >= 6 && ps[0] == 'uploads' && ps[1] == 'default') {
+        final idxType = 2; // optimized/original
+        if (ps[idxType] == 'optimized') {
+          ps[idxType] = 'original';
+          final last = ps.last;
+          final newLast = last.replaceAll(RegExp(r'_(?:\d+_)?\d+x\d+(?=\.)'), '');
+          ps[ps.length - 1] = newLast;
+          final replaced = u.replace(pathSegments: ps);
+          return replaced.toString();
+        }
+      }
+    } catch (_) {}
+    return url;
+  }
+
   // 兜底：以带头方式抓取图片字节，便于在 CF/鉴权场景下展示
   Future<Uint8List> fetchImageBytes(String url) async {
     final client = _buildClient();
     try {
-      final uri = Uri.parse(url);
-      final res = await client.get(uri, headers: imageHeaders());
-      debugPrint('[LinuxDoApi] <-- ${res.statusCode} IMG $uri');
-      if (res.statusCode != 200) {
-        throw HttpException('HTTP ${res.statusCode}', uri: uri);
+      final candidates = <String>{toOriginalImageUrl(url), url}.toList();
+      http.Response? res;
+      late Uri uri;
+      for (final u in candidates) {
+        uri = Uri.parse(u);
+        res = await client.get(uri, headers: imageHeaders());
+        if (kDebugMode) {
+          debugPrint('[LinuxDoApi] IMG try ${res.statusCode} $uri');
+        }
+        if (res.statusCode == 200) {
+          return res.bodyBytes;
+        }
       }
-      return res.bodyBytes;
+      // 仍未成功
+      throw HttpException('HTTP ${res?.statusCode ?? -1}', uri: uri);
     } finally {
       client.close();
     }

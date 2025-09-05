@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../api/linuxdo_api.dart';
 import '../models/topic.dart';
 import '../services/settings.dart';
 import 'topic_detail_page.dart';
+import 'image_viewer_page.dart';
 import 'settings_page.dart';
 import 'web_login_page.dart';
 import '../widgets/secure_image.dart';
@@ -229,28 +231,37 @@ class _HomePageState extends State<HomePage> {
           final authorId = t.postersUserIds.isNotEmpty ? t.postersUserIds.first : null;
           final user = authorId != null ? _userMap[authorId] : null;
           final avatarUrl = _api.avatarUrlFromTemplate(user?.avatarTemplate, size: 48);
-          if (avatarUrl.isNotEmpty) {
+          if (kDebugMode && avatarUrl.isNotEmpty) {
             debugPrint('[Avatar] Home user=${user?.username ?? '-'} url=$avatarUrl');
           }
           return ListTile(
             leading: SizedBox(
               width: 40,
               height: 40,
-              child: ClipOval(
-                child: (avatarUrl.isNotEmpty)
-                    ? SecureImage(
-                        url: avatarUrl,
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.cover,
-                        error: Container(
-                          color: Colors.grey.shade200,
-                          child: const Icon(Icons.person_outline),
+              child: GestureDetector(
+                onTap: () async {
+                  if (avatarUrl.isNotEmpty) {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => ImageViewerPage(url: avatarUrl)),
+                    );
+                  }
+                },
+                child: ClipOval(
+                  child: (avatarUrl.isNotEmpty)
+                      ? SecureImage(
+                          url: avatarUrl,
+                          width: 40,
+                          height: 40,
+                          fit: BoxFit.cover,
+                          error: Container(
+                            color: Colors.grey.shade200,
+                            child: const Icon(Icons.person_outline),
+                          ),
+                        )
+                      : CircleAvatar(
+                          child: Text((t.title.isNotEmpty ? t.title.substring(0, 1) : '#')),
                         ),
-                      )
-                    : CircleAvatar(
-                        child: Text((t.title.isNotEmpty ? t.title.substring(0, 1) : '#')),
-                      ),
+                ),
               ),
             ),
             title: Text(t.title),

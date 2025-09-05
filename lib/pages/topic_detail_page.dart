@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+// import 'package:flutter/foundation.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -6,6 +8,7 @@ import '../api/linuxdo_api.dart';
 import '../models/topic.dart';
 import 'web_login_page.dart';
 import '../widgets/secure_image.dart';
+import 'image_viewer_page.dart';
 
 class TopicDetailPage extends StatefulWidget {
   const TopicDetailPage({super.key, required this.topicId, required this.title});
@@ -100,7 +103,7 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
               final p = detail.posts[index];
               final cooked = _api.absolutizeHtml(p.cookedHtml);
               final avatarUrl = _api.avatarUrlFromTemplate(p.avatarTemplate, size: 40);
-              if (avatarUrl.isNotEmpty) {
+              if (kDebugMode && avatarUrl.isNotEmpty) {
                 debugPrint('[Avatar] Detail user=@${p.username} url=$avatarUrl');
               }
               return Column(
@@ -111,22 +114,33 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                       SizedBox(
                         width: 32,
                         height: 32,
-                        child: ClipOval(
-                          child: (avatarUrl.isNotEmpty)
-                              ? SecureImage(
-                                  url: avatarUrl,
-                                  width: 32,
-                                  height: 32,
-                                  fit: BoxFit.cover,
-                                  error: Container(
-                                    color: Colors.grey.shade200,
-                                    child: const Icon(Icons.person_outline, size: 16),
-                                  ),
-                                )
-                              : CircleAvatar(
-                                  radius: 16,
-                                  child: Text(p.username.isNotEmpty ? p.username.substring(0, 1) : '?'),
+                        child: GestureDetector(
+                          onTap: () async {
+                            if (avatarUrl.isNotEmpty) {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => ImageViewerPage(url: avatarUrl),
                                 ),
+                              );
+                            }
+                          },
+                          child: ClipOval(
+                            child: (avatarUrl.isNotEmpty)
+                                ? SecureImage(
+                                    url: avatarUrl,
+                                    width: 32,
+                                    height: 32,
+                                    fit: BoxFit.cover,
+                                    error: Container(
+                                      color: Colors.grey.shade200,
+                                      child: const Icon(Icons.person_outline, size: 16),
+                                    ),
+                                  )
+                                : CircleAvatar(
+                                    radius: 16,
+                                    child: Text(p.username.isNotEmpty ? p.username.substring(0, 1) : '?'),
+                                  ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -164,15 +178,18 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                           }
                           if (raw.isEmpty) return null;
                           final url = _api.absolutizeUrl(raw);
-                          debugPrint('[Image] Detail url=$url');
+                          if (kDebugMode) {
+                            debugPrint('[Image] Detail url=$url');
+                          }
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             child: GestureDetector(
                               onTap: () async {
-                                final uri = Uri.tryParse(url);
-                                if (uri != null) {
-                                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                }
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => ImageViewerPage(url: url),
+                                  ),
+                                );
                               },
                               child: SecureImage(
                                 url: url,
