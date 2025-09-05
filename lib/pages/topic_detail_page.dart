@@ -331,6 +331,22 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                            'color': '#666',
                          };
                        }
+                       // 行内代码样式（不做语法高亮，仅底色和等宽字体）
+                       if (element.localName == 'code' && element.parent?.localName != 'pre') {
+                         return {
+                           'background-color': '#f6f8fa',
+                           'border-radius': '4px',
+                           'padding': '2px 4px',
+                           'font-family': 'monospace',
+                           'font-size': '90%'
+                         };
+                       }
+                       // 代码块外围 <pre> 简单留白（实际渲染在 customWidgetBuilder 中处理）
+                       if (element.localName == 'pre') {
+                         return {
+                           'margin': '8px 0',
+                         };
+                       }
                        if (element.localName == 'blockquote') {
                          return {
                            'margin': '0',
@@ -360,8 +376,39 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                        }
                        return null;
                      },
-                    // 覆盖 <img> 渲染，携带 Cookie/UA 以避免 403，并支持点击外部打开
+                    // 自定义代码块与图片渲染（代码块不做高亮，仅等宽与滚动）
                     customWidgetBuilder: (element) {
+                      // 处理代码块 <pre><code>...</code></pre>
+                      try {
+                        if (element.localName == 'pre') {
+                          // 取内部文本，保持转义还原
+                          final text = element.text;
+                          if (text.trim().isEmpty) return null;
+                          return Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.symmetric(vertical: 4),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xfff6f8fa),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xffe1e4e8)),
+                            ),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: SelectableText(
+                                text,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 13,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+                        // 行内 <code> 交给样式处理，默认返回 null 走内置渲染
+                      } catch (_) {}
+                      // 覆盖 <img> 渲染，携带 Cookie/UA 以避免 403，并支持点击外部打开
                       try {
                         if (element.localName == 'img') {
                           final attrs = element.attributes;
