@@ -131,8 +131,12 @@ class _HomePageState extends State<HomePage> {
           // 持久化上一版快照
           _savePrevSnapshot();
         } else {
-          // 首次加载：没有历史快照，不标红；也清空刷新新增集合
-          _newFromRefreshIds = <int>{};
+          // 进程重启或首次页面加载：内存列表为空，此时基线取自持久化的 _prevSnapshot
+          // 若存在历史快照，则基于它计算刷新新增集合；否则保持为空避免首启全屏红点
+          _newFromRefreshIds = {
+            for (final t in page.topics)
+              if (_prevSnapshot.isNotEmpty && !_prevSnapshot.containsKey(t.id)) t.id,
+          };
         }
         _topics = page.topics;
         _moreTopicsUrl = page.moreTopicsUrl;
