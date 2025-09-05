@@ -171,10 +171,43 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                       ),
                       if (detail.posts.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        Text(
-                          '作者: @${detail.posts[0].username} · ${detail.posts[0].createdAt?.toLocal().toString().split('.')[0] ?? ''}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                        RichText(
+                          text: TextSpan(
+                            children: [
+                              const TextSpan(
+                                text: '作者: ',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              if (detail.posts[0].name != null && detail.posts[0].name!.isNotEmpty)
+                                TextSpan(
+                                  text: detail.posts[0].name,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              if (detail.posts[0].name != null && detail.posts[0].name!.isNotEmpty)
+                                const TextSpan(text: ' '),
+                              TextSpan(
+                                text: '@${detail.posts[0].username}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w300,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              TextSpan(
+                                text: ' · ${detail.posts[0].createdAt?.toLocal().toString().split('.')[0] ?? ''}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -226,7 +259,31 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text('@${p.username}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                      RichText(
+                        text: TextSpan(
+                          children: [
+                            if (p.name != null && p.name!.isNotEmpty)
+                              TextSpan(
+                                text: p.name,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              ),
+                            if (p.name != null && p.name!.isNotEmpty)
+                              const TextSpan(text: ' '),
+                            TextSpan(
+                              text: '@${p.username}',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w300,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         p.createdAt?.toLocal().toString() ?? '',

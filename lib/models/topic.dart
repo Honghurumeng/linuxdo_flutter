@@ -49,6 +49,7 @@ class TopicSummary {
 class PostItem {
   final int id;
   final String username;
+  final String? name;
   final DateTime? createdAt;
   final String cookedHtml; // discourse 已经渲染好的 HTML
   final String? avatarTemplate;
@@ -56,6 +57,7 @@ class PostItem {
   PostItem({
     required this.id,
     required this.username,
+    this.name,
     required this.cookedHtml,
     this.createdAt,
     this.avatarTemplate,
@@ -64,6 +66,7 @@ class PostItem {
   factory PostItem.fromJson(Map<String, dynamic> json) => PostItem(
         id: json['id'] as int,
         username: (json['username'] ?? '').toString(),
+        name: json['name']?.toString(),
         createdAt: json['created_at'] != null
             ? DateTime.tryParse(json['created_at'].toString())
             : null,
