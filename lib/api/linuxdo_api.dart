@@ -200,6 +200,22 @@ class LinuxDoApi {
     return TopicDetail.fromJson(data);
   }
 
+  // 搜索帖子（按关键词），返回主题列表与相关用户
+  Future<SearchResult> searchTopics(String query, {int? page}) async {
+    final params = <String, dynamic>{'q': query};
+    if (page != null) params['page'] = page;
+    final uri = _u('/search.json', params);
+    final res = await _get(uri);
+    if (res.statusCode != 200) {
+      if (res.statusCode == 403) {
+        throw ApiException(403, '需要登录');
+      }
+      throw ApiException(res.statusCode, '搜索失败');
+    }
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    return SearchResult.fromJson(data);
+  }
+
   // 将帖子中的相对链接/图片地址转换为绝对地址，方便渲染
   String absolutizeHtml(String html) {
     final bu = _baseUrl;

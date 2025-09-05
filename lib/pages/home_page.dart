@@ -11,6 +11,7 @@ import 'image_viewer_page.dart';
 import 'settings_page.dart';
 import 'web_login_page.dart';
 import '../widgets/secure_image.dart';
+import 'search_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -199,6 +200,15 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('LinuxDo 主页帖子'),
         actions: [
+          IconButton(
+            tooltip: '搜索帖子',
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SearchPage()),
+              );
+            },
+          ),
           IconButton(
             tooltip: '刷新列表',
             icon: const Icon(Icons.refresh),

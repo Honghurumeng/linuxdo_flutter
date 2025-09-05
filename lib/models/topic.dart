@@ -137,3 +137,25 @@ class UserBrief {
         avatarTemplate: json['avatar_template']?.toString(),
       );
 }
+
+class SearchResult {
+  final List<TopicSummary> topics;
+  final List<UserBrief> users;
+
+  SearchResult({required this.topics, required this.users});
+
+  factory SearchResult.fromJson(Map<String, dynamic> json) {
+    final topics = (json['topics'] as List?) ?? const [];
+    final users = (json['users'] as List?) ?? const [];
+    return SearchResult(
+      topics: topics
+          .whereType<Map<String, dynamic>>()
+          .map(TopicSummary.fromJson)
+          .toList(),
+      users: users
+          .whereType<Map<String, dynamic>>()
+          .map(UserBrief.fromJson)
+          .toList(),
+    );
+  }
+}
