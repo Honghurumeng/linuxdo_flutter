@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 // import 'package:flutter/foundation.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/linuxdo_api.dart';
@@ -376,7 +377,7 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                        }
                        return null;
                      },
-                    // 自定义代码块与图片渲染（代码块不做高亮，仅等宽与滚动）
+                    // 自定义代码块与图片渲染（代码块不做高亮，等宽字体，限定最大高度并支持滚动 + 复制）
                     customWidgetBuilder: (element) {
                       // 处理代码块 <pre><code>...</code></pre>
                       try {
@@ -387,21 +388,57 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                           return Container(
                             width: double.infinity,
                             margin: const EdgeInsets.symmetric(vertical: 4),
-                            padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: const Color(0xfff6f8fa),
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(color: const Color(0xffe1e4e8)),
                             ),
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: SelectableText(
-                                text,
-                                style: const TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 13,
-                                  height: 1.4,
-                                ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: Stack(
+                                children: [
+                                  // 限定最大高度，内部可垂直/水平滚动
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxHeight: 320),
+                                    child: Scrollbar(
+                                      thumbVisibility: true,
+                                      child: SingleChildScrollView(
+                                        padding: const EdgeInsets.fromLTRB(12, 12, 42, 12),
+                                        child: SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: SelectableText(
+                                            text,
+                                            style: const TextStyle(
+                                              fontFamily: 'monospace',
+                                              fontSize: 13,
+                                              height: 1.4,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  // 复制按钮（右上角）
+                                  Positioned(
+                                    top: 0,
+                                    right: 0,
+                                    child: IconButton(
+                                      icon: const Icon(Icons.copy, size: 18),
+                                      tooltip: '复制',
+                                      onPressed: () async {
+                                        await Clipboard.setData(ClipboardData(text: text));
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context).clearSnackBars();
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('已复制到剪贴板')),
+                                          );
+                                        }
+                                      },
+                                      padding: const EdgeInsets.all(8),
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           );
