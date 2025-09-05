@@ -74,13 +74,12 @@ class LinuxDoApi {
 
   Future<http.Response> _get(Uri uri) async {
     final client = _buildClient();
-    // 首次使用 Android Chrome UA，请求失败（403/429/503）时再用 iOS Safari UA 重试一次
     try {
       final h1 = _headers();
       debugPrint('[LinuxDoApi] --> GET $uri');
       debugPrint('[LinuxDoApi] UA: ${h1['User-Agent']}');
       debugPrint('[LinuxDoApi] Referer: ${h1['Referer']}');
-      if (h1.containsKey('Cookie')) {
+      if (h1.containsKey('Cookie') && (h1['Cookie']?.trim().isNotEmpty == true)) {
         final cookieNames = h1['Cookie']!
             .split(';')
             .map((e) => e.trim())
@@ -89,18 +88,8 @@ class LinuxDoApi {
             .toList();
         debugPrint('[LinuxDoApi] Cookie: ${cookieNames.join(', ')}');
       }
-      var response = await client.get(uri, headers: h1);
+      final response = await client.get(uri, headers: h1);
       debugPrint('[LinuxDoApi] <-- ${response.statusCode} GET $uri');
-      if (response.statusCode == 403 || response.statusCode == 429 || response.statusCode == 503) {
-        debugPrint('[LinuxDoApi] Retrying with iOS Safari UA due to ${response.statusCode}');
-        await Future.delayed(const Duration(milliseconds: 200));
-        final iosUa =
-            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
-        final h2 = _headers(ua: iosUa);
-        debugPrint('[LinuxDoApi] UA2: ${h2['User-Agent']}');
-        response = await client.get(uri, headers: h2);
-        debugPrint('[LinuxDoApi] <-- ${response.statusCode} GET $uri (retry)');
-      }
       _mergeSetCookie(response);
       return response;
     } finally {

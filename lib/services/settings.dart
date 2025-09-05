@@ -28,7 +28,6 @@ class SettingsService extends ChangeNotifier {
   SettingsService._();
   static final SettingsService instance = SettingsService._();
 
-  static const _kBaseUrl = 'baseUrl';
   static const _kUserAgent = 'userAgent';
   static const _kProxy = 'proxy';
   static const _kCookies = 'cookies';
@@ -42,7 +41,8 @@ class SettingsService extends ChangeNotifier {
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     _value = AppSettings(
-      baseUrl: prefs.getString(_kBaseUrl) ?? 'https://linux.do',
+      // 固定内置 Base URL，不再读取或允许设置
+      baseUrl: 'https://linux.do',
       userAgent: prefs.getString(_kUserAgent),
       proxy: prefs.getString(_kProxy),
       cookies: prefs.getString(_kCookies),
@@ -51,22 +51,29 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> update({String? baseUrl, String? userAgent, String? proxy, String? cookies}) async {
-    // 按传入值“覆盖或清空”，而不是 copyWith 忽略 null
-    final newBaseUrl = baseUrl ?? _value.baseUrl;
-    final newUa = (userAgent != null && userAgent.isEmpty) ? null : userAgent; // 允许显式清空
-    final newProxy = (proxy != null && proxy.isEmpty) ? null : proxy;
-    final newCookies = (cookies != null && cookies.isEmpty) ? null : cookies;
+  Future<void> update({String? userAgent, String? proxy, String? cookies}) async {
+    // 规则：
+    // - 传入 null => 不变；
+    // - 传入空字符串 => 清空；
+    // - 传入非空字符串 => 覆盖。
+    final newUa = userAgent == null
+        ? _value.userAgent
+        : (userAgent.isEmpty ? null : userAgent);
+    final newProxy = proxy == null
+        ? _value.proxy
+        : (proxy.isEmpty ? null : proxy);
+    final newCookies = cookies == null
+        ? _value.cookies
+        : (cookies.isEmpty ? null : cookies);
 
     _value = AppSettings(
-      baseUrl: newBaseUrl,
+      baseUrl: _value.baseUrl,
       userAgent: newUa,
       proxy: newProxy,
       cookies: newCookies,
     );
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kBaseUrl, newBaseUrl);
 
     if (newUa == null || newUa.isEmpty) {
       await prefs.remove(_kUserAgent);

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/settings.dart';
+import '../services/native_cookie.dart';
 
 class WebLoginPage extends StatefulWidget {
   const WebLoginPage({super.key});
@@ -39,24 +40,69 @@ class _WebLoginPageState extends State<WebLoginPage> {
 
   Future<void> _saveCookies() async {
     try {
-      // 读取 document.cookie 字符串
-      final result = await _controller.runJavaScriptReturningResult('document.cookie');
-      String raw;
-      if (result is String) {
-        raw = result;
-      } else {
-        // iOS 可能返回 JSON 字符串包了引号
-        raw = result.toString();
+      // 1) 读取 WebView 原生 Cookie（可获取 HttpOnly，如 cf_clearance）
+      final baseUrl = SettingsService.instance.value.baseUrl;
+      final urlForCookie = _currentUrl.isNotEmpty ? _currentUrl : baseUrl;
+      final nativeMap = <String, String>{};
+      try {
+        final c1 = await NativeCookie.getCookies(urlForCookie);
+        nativeMap.addAll(c1);
+      } catch (_) {}
+      try {
+        final c2 = await NativeCookie.getCookies(baseUrl);
+        nativeMap.addAll(c2);
+      } catch (_) {}
+
+      // 2) 同时读取 document.cookie（补充非 HttpOnly）
+      String jsCookieStr = '';
+      try {
+        final result = await _controller.runJavaScriptReturningResult('document.cookie');
+        if (result is String) {
+          jsCookieStr = result;
+        } else {
+          jsCookieStr = result.toString();
+        }
+        jsCookieStr = jsCookieStr.trim();
+        if (jsCookieStr.startsWith('"') && jsCookieStr.endsWith('"')) {
+          jsCookieStr = jsonDecode(jsCookieStr) as String;
+        }
+      } catch (_) {
+        // 忽略 JS 读取失败
       }
-      // 去掉可能的多余引号
-      raw = raw.trim();
-      if (raw.startsWith('"') && raw.endsWith('"')) {
-        raw = jsonDecode(raw) as String; // 解码一次
+      if (jsCookieStr.isNotEmpty) {
+        final parts = jsCookieStr.split(';');
+        for (final p in parts) {
+          final kv = p.trim();
+          final i = kv.indexOf('=');
+          if (i > 0) {
+            final k = kv.substring(0, i).trim();
+            final v = kv.substring(i + 1).trim();
+            if (k.isNotEmpty && v.isNotEmpty && !nativeMap.containsKey(k)) {
+              nativeMap[k] = v;
+            }
+          }
+        }
       }
-      await SettingsService.instance.update(cookies: raw);
+
+      // 3) 获取 WebView 的 UA
+      String ua = '';
+      try {
+        final uaResult = await _controller.runJavaScriptReturningResult('navigator.userAgent');
+        ua = (uaResult is String ? uaResult : uaResult.toString()).trim();
+        if (ua.startsWith('"') && ua.endsWith('"')) {
+          ua = jsonDecode(ua) as String;
+        }
+      } catch (_) {}
+
+      // 4) 序列化为请求头可用的格式：k1=v1; k2=v2
+      final raw = nativeMap.entries.map((e) => '${e.key}=${e.value}').join('; ');
+
+      // 5) 保存（Cloudflare 会将 cf_clearance 与 UA 绑定）
+      await SettingsService.instance.update(cookies: raw, userAgent: ua.isEmpty ? null : ua);
       if (!mounted) return;
+      final hasClearance = nativeMap.keys.any((k) => k.toLowerCase() == 'cf_clearance');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cookies 已保存')),
+        SnackBar(content: Text(hasClearance ? 'Cookies 和 UA 已保存' : '已保存，但未检测到 cf_clearance，请确认已通过 Cloudflare 验证')), 
       );
       Navigator.of(context).pop(true);
     } catch (e) {
