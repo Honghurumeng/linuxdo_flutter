@@ -347,8 +347,8 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                        }
                        if (element.localName == 'img' && element.attributes['class']?.contains('avatar') == true) {
                          return {
-                           'width': '24px',
-                           'height': '24px',
+                           'width': '20px',
+                           'height': '20px',
                            'border-radius': '50%',
                            'margin-right': '8px',
                          };
@@ -378,8 +378,23 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                           if (kDebugMode) {
                             debugPrint('[Image] Detail url=$url');
                           }
-                          // emoji 图片：按文字字号渲染，内联显示
+                          // 头像图片（引用标题中的用户头像）：缩小显示
                           final cls = attrs['class'] ?? '';
+                          if (cls.contains('avatar')) {
+                            return SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: ClipOval(
+                                child: SecureImage(
+                                  url: url,
+                                  width: 20,
+                                  height: 20,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            );
+                          }
+                          // emoji 图片：按文字字号渲染，内联显示
                           final isEmoji = cls.contains('emoji') ||
                               url.contains('/images/emoji/') ||
                               url.contains('/emoji/twemoji/') ||

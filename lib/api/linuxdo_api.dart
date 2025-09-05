@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
-import 'dart:typed_data';
+
 
 import '../models/topic.dart';
 import '../services/settings.dart';
@@ -233,7 +233,7 @@ class LinuxDoApi {
       final u = Uri.parse(url);
       final ps = List<String>.from(u.pathSegments);
       if (ps.length >= 6 && ps[0] == 'uploads' && ps[1] == 'default') {
-        final idxType = 2; // optimized/original
+        const idxType = 2; // optimized/original
         if (ps[idxType] == 'optimized') {
           ps[idxType] = 'original';
           final last = ps.last;
@@ -247,8 +247,8 @@ class LinuxDoApi {
     return url;
   }
 
-  // 兜底：以带头方式抓取图片字节，便于在 CF/鉴权场景下展示
-  Future<Uint8List> fetchImageBytes(String url) async {
+  // 获取图片字节和类型信息
+  Future<Map<String, dynamic>> fetchImageBytesWithType(String url) async {
     final client = _buildClient();
     try {
       final candidates = <String>{toOriginalImageUrl(url), url}.toList();
@@ -259,9 +259,14 @@ class LinuxDoApi {
         res = await client.get(uri, headers: imageHeaders());
         if (kDebugMode) {
           debugPrint('[LinuxDoApi] IMG try ${res.statusCode} $uri');
+          debugPrint('[LinuxDoApi] Content-Type: ${res.headers['content-type']}');
         }
         if (res.statusCode == 200) {
-          return res.bodyBytes;
+          final contentType = res.headers['content-type'] ?? '';
+          return {
+            'bytes': res.bodyBytes,
+            'isSvg': contentType.toLowerCase().contains('svg') || contentType.toLowerCase().contains('image/svg+xml'),
+          };
         }
       }
       // 仍未成功
@@ -269,6 +274,12 @@ class LinuxDoApi {
     } finally {
       client.close();
     }
+  }
+
+  // 兜底：以带头方式抓取图片字节，便于在 CF/鉴权场景下展示
+  Future<Uint8List> fetchImageBytes(String url) async {
+    final result = await fetchImageBytesWithType(url);
+    return result['bytes'] as Uint8List;
   }
 }
 

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../api/linuxdo_api.dart';
 
@@ -28,27 +29,38 @@ class SecureImage extends StatefulWidget {
 
 class _SecureImageState extends State<SecureImage> {
   final _api = LinuxDoApi();
-  late Future<Uint8List> _future;
+  late Future<Map<String, dynamic>> _future;
 
   @override
   void initState() {
     super.initState();
-    _future = _api.fetchImageBytes(widget.url);
+    _future = _api.fetchImageBytesWithType(widget.url);
   }
 
   @override
   void didUpdateWidget(covariant SecureImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url) {
-      _future = _api.fetchImageBytes(widget.url);
+      _future = _api.fetchImageBytesWithType(widget.url);
     }
   }
+
+  bool _isSvgContent(Uint8List data) {
+    try {
+      final header = String.fromCharCodes(data.take(100));
+      return header.trim().startsWith('<svg') || header.contains('<svg');
+    } catch (_) {
+      return false;
+    }
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
     final placeholder = widget.placeholder ?? _defaultPlaceholder();
     final error = widget.error ?? _defaultError();
-    return FutureBuilder<Uint8List>(
+    return FutureBuilder<Map<String, dynamic>>(
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
@@ -57,8 +69,24 @@ class _SecureImageState extends State<SecureImage> {
         if (snapshot.hasError || !snapshot.hasData) {
           return error;
         }
+        
+        final result = snapshot.data!;
+        final data = result['bytes'] as Uint8List;
+        final isSvg = result['isSvg'] as bool;
+        
+        if (isSvg || _isSvgContent(data)) {
+          return SvgPicture.memory(
+            data,
+            width: widget.width,
+            height: widget.height,
+            fit: widget.fit ?? BoxFit.contain,
+            placeholderBuilder: (_) => placeholder,
+            errorBuilder: (_, __, ___) => error,
+          );
+        }
+        
         return Image.memory(
-          snapshot.data!,
+          data,
           width: widget.width,
           height: widget.height,
           fit: widget.fit,
