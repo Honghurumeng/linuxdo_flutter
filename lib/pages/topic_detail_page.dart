@@ -181,6 +181,28 @@ class _TopicDetailPageState extends State<TopicDetailPage> {
                           if (kDebugMode) {
                             debugPrint('[Image] Detail url=$url');
                           }
+                          // emoji 图片：按文字字号渲染，内联显示
+                          final cls = attrs['class'] ?? '';
+                          final isEmoji = cls.contains('emoji') ||
+                              url.contains('/images/emoji/') ||
+                              url.contains('/emoji/twemoji/') ||
+                              url.contains('/twemoji/');
+                          if (isEmoji) {
+                            final fontSize = DefaultTextStyle.of(context).style.fontSize ??
+                                Theme.of(context).textTheme.bodyMedium?.fontSize ??
+                                14.0;
+                            return SizedBox(
+                              width: fontSize,
+                              height: fontSize,
+                              child: SecureImage(
+                                url: url,
+                                width: fontSize,
+                                height: fontSize,
+                                fit: BoxFit.contain,
+                              ),
+                            );
+                          }
+                          // 普通图片：保留点击放大与错误提示
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             child: GestureDetector(
