@@ -3,12 +3,13 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart';
+// io_client no longer used here
 
 
 import '../models/topic.dart';
 import '../services/settings.dart';
-import '../services/cookie_refresher.dart';
+import '../services/session.dart';
+// typed_data is available via flutter foundation; no direct import needed
 
 class LinuxDoApi {
   LinuxDoApi({this.baseUrl});
@@ -17,33 +18,7 @@ class LinuxDoApi {
 
   String get _baseUrl => (baseUrl ?? SettingsService.instance.value.baseUrl).trim();
 
-  Map<String, String> _headers({String? ua}) {
-    final cookies = SettingsService.instance.value.cookies?.trim();
-    final bu = Uri.parse(_baseUrl);
-    final origin = '${bu.scheme}://${bu.host}${bu.hasPort ? ':${bu.port}' : ''}';
-    final h = {
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'User-Agent': ua ??
-            (SettingsService.instance.value.userAgent?.trim().isNotEmpty == true
-                ? SettingsService.instance.value.userAgent!.trim()
-                :
-            // 默认使用桌面 Chrome UA（按用户要求）
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'),
-        'Referer': _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/',
-        'Origin': origin,
-        // 模拟浏览器请求特征，降低 Cloudflare/BIC 误判
-        'X-Requested-With': 'XMLHttpRequest',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
-        'Sec-Fetch-Dest': 'empty',
-        'Connection': 'keep-alive',
-      };
-    if (cookies != null && cookies.isNotEmpty) {
-      h['Cookie'] = cookies;
-    }
-    return h;
-  }
+  // 请求头构造逻辑已集中在 Session，仅保留图片头部在本类（imageHeaders）
 
   // 已简化为直接使用默认 GET 加载图片，不再提供专门的图片头部
   Map<String, String> imageHeaders() {
@@ -92,125 +67,13 @@ class LinuxDoApi {
     return Uri.parse(_baseUrl).resolve(url).toString();
   }
 
-  IOClient _buildClient() {
-    final s = SettingsService.instance.value;
-    final httpClient = HttpClient();
-    String? proxy = s.proxy?.trim();
-    if (proxy != null && proxy.isNotEmpty) {
-      // 允许带协议或不带协议的写法
-      proxy = proxy.replaceFirst(RegExp(r'^https?://'), '');
-      httpClient.findProxy = (uri) => 'PROXY $proxy; DIRECT';
-      // 打印代理信息（仅 Debug）
-      if (kDebugMode) {
-        debugPrint('[LinuxDoApi] Proxy enabled: $proxy');
-      }
-    }
-    return IOClient(httpClient);
+  // 网络客户端统一由 Session 管理
+
+  Future<http.Response> _get(Uri uri) {
+    return Session.instance.fetchJsonUri(uri);
   }
 
-  Future<http.Response> _get(Uri uri) async {
-    final client = _buildClient();
-    try {
-      final h1 = _headers();
-      if (kDebugMode) {
-        debugPrint('[LinuxDoApi] --> GET $uri');
-        debugPrint('[LinuxDoApi] UA: ${h1['User-Agent']}');
-        debugPrint('[LinuxDoApi] Referer: ${h1['Referer']}');
-      }
-      if (h1.containsKey('Cookie') && (h1['Cookie']?.trim().isNotEmpty == true)) {
-        final cookieNames = h1['Cookie']!
-            .split(';')
-            .map((e) => e.trim())
-            .where((e) => e.contains('='))
-            .map((e) => e.split('=').first)
-            .toList();
-        if (kDebugMode) {
-          debugPrint('[LinuxDoApi] Cookie: ${cookieNames.join(', ')}');
-        }
-      }
-      http.Response response = await client.get(uri, headers: h1);
-      if (kDebugMode) {
-        debugPrint('[LinuxDoApi] <-- ${response.statusCode} GET $uri');
-      }
-      final merged = _mergeSetCookie(response);
-
-      // 如果被 Cloudflare/服务端拦截（常见 403/503/520），且发现 Set-Cookie 发生了变更（例如下发新的 cf_clearance），
-      // 则自动重试一次以提升稳定性，避免用户看到“需要登录”。
-      final sc = response.statusCode;
-      final server = (response.headers['server'] ?? '').toLowerCase();
-      final cfRay = response.headers.containsKey('cf-ray');
-      final maybeChallenged = (sc == 403 || sc == 503 || sc == 520) && (merged || server.contains('cloudflare') || cfRay);
-      if (maybeChallenged) {
-        if (kDebugMode) {
-          debugPrint('[LinuxDoApi] Challenge suspected, retrying once with refreshed cookies...');
-        }
-        // 以最新 Cookie 再请求一次
-        final h2 = _headers();
-        response = await client.get(uri, headers: h2);
-        if (kDebugMode) {
-          debugPrint('[LinuxDoApi] <-- RETRY ${response.statusCode} GET $uri');
-        }
-        _mergeSetCookie(response);
-
-        // 若依然被拦截，则尝试后台静默刷新 Cookie（隐形 WebView）并最终再试一次
-        final sc2 = response.statusCode;
-        final stillChallenged = (sc2 == 403 || sc2 == 503 || sc2 == 520);
-        if (stillChallenged) {
-          final didRefresh = await CookieRefresher.instance.silentRefresh();
-          if (didRefresh) {
-            if (kDebugMode) {
-              debugPrint('[LinuxDoApi] Cookies refreshed in background, final retry...');
-            }
-            response = await client.get(uri, headers: _headers());
-            if (kDebugMode) {
-              debugPrint('[LinuxDoApi] <-- FINAL ${response.statusCode} GET $uri');
-            }
-            _mergeSetCookie(response);
-          }
-        }
-      }
-      return response;
-    } finally {
-      client.close();
-    }
-  }
-
-  // 从响应头中合并 Set-Cookie（若有）到本地 Cookies
-  bool _mergeSetCookie(http.Response res) {
-    final setCookie = res.headers['set-cookie'];
-    if (setCookie == null || setCookie.isEmpty) return false;
-    final existing = SettingsService.instance.value.cookies ?? '';
-    final current = <String, String>{}
-      ..addEntries(existing.split(';').map((e) => e.trim()).where((e) => e.contains('=')).map((kv) {
-        final i = kv.indexOf('=');
-        final name = kv.substring(0, i).trim();
-        final value = kv.substring(i + 1).trim();
-        return MapEntry(name, value);
-      }));
-    final reg = RegExp(r'(?:(?<=^)|(?<=, ))([^=; ,]+)=([^;]+)');
-    for (final m in reg.allMatches(setCookie)) {
-      final name = m.group(1);
-      final value = m.group(2);
-      if (name != null && value != null) {
-        if (name.toLowerCase() == 'path' || name.toLowerCase() == 'expires' || name.toLowerCase() == 'httponly' || name.toLowerCase() == 'secure' || name.toLowerCase() == 'samesite' || name.toLowerCase() == 'domain') {
-          continue;
-        }
-        // 忽略服务端要求删除的 cookie 值（常见 value 为 'deleted' 或空），避免短时间内误删 cf_clearance 等关键值
-        final v = value.trim();
-        if (v.isEmpty || v.toLowerCase() == 'deleted') continue;
-        current[name] = value;
-      }
-    }
-    final merged = current.entries.map((e) => '${e.key}=${e.value}').join('; ');
-    final changed = merged.trim() != existing.trim();
-    if (changed) {
-      SettingsService.instance.update(cookies: merged);
-      if (kDebugMode) {
-        debugPrint('[LinuxDoApi] Set-Cookie merged -> ${current.keys.join(', ')}');
-      }
-    }
-    return changed;
-  }
+  // Set-Cookie 的合并与挑战处理由 Session 统一负责
 
   Future<LatestPage> fetchLatest({String? moreTopicsUrl, int? page}) async {
     Uri uri;
@@ -326,45 +189,31 @@ class LinuxDoApi {
 
   // 获取图片字节和类型信息
   Future<Map<String, dynamic>> fetchImageBytesWithType(String url) async {
-    final client = _buildClient();
-    try {
-      final candidates = <String>{toOriginalImageUrl(url), url}.toList();
-      http.Response? res;
-      late Uri uri;
-      for (final u in candidates) {
-        uri = Uri.parse(u);
-        final h = imageHeaders();
-        res = await client.get(uri, headers: h);
+    final candidates = <String>{toOriginalImageUrl(url), url}.toList();
+    for (final u in candidates) {
+      try {
+        final r = await Session.instance.fetchBytes(u);
+        final bytes = r['bytes'] as Uint8List;
+        final ct = (r['contentType'] ?? '').toString().toLowerCase();
+        final isSvg = ct.contains('svg') || ct.contains('image/svg+xml');
         if (kDebugMode) {
-          debugPrint('[LinuxDoApi] IMG try ${res.statusCode} $uri');
-          debugPrint('[LinuxDoApi] Content-Type: ${res.headers['content-type']}');
-          final cookieHeader = h['Cookie'] ?? '';
-          if (cookieHeader.isNotEmpty) {
-            final names = cookieHeader
-                .split(';')
-                .map((e) => e.trim())
-                .where((e) => e.contains('='))
-                .map((e) => e.substring(0, e.indexOf('=')))
-                .toList();
-            debugPrint('[LinuxDoApi] IMG Cookie: ${names.join(', ')}');
-          } else {
-            debugPrint('[LinuxDoApi] IMG Cookie: (none)');
-          }
-          debugPrint('[LinuxDoApi] IMG UA: ${h['User-Agent']}');
+          debugPrint('[LinuxDoApi] IMG ok ${bytes.length}B $u');
+          debugPrint('[LinuxDoApi] Content-Type: ${r['contentType']}');
         }
-        if (res.statusCode == 200) {
-          final contentType = res.headers['content-type'] ?? '';
-          return {
-            'bytes': res.bodyBytes,
-            'isSvg': contentType.toLowerCase().contains('svg') || contentType.toLowerCase().contains('image/svg+xml'),
-          };
+        return {
+          'bytes': bytes,
+          'isSvg': isSvg,
+        };
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[LinuxDoApi] IMG fail for $u: $e');
         }
+        // try next candidate
       }
-      // 仍未成功
-      throw HttpException('HTTP ${res?.statusCode ?? -1}', uri: uri);
-    } finally {
-      client.close();
     }
+    // 仍未成功
+    final uri = Uri.parse(candidates.last);
+    throw HttpException('Failed to fetch image', uri: uri);
   }
 
   // 兜底：以带头方式抓取图片字节，便于在 CF/鉴权场景下展示

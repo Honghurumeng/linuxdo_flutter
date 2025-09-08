@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+// import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-import 'app_navigator.dart';
+// import 'app_navigator.dart';
 import 'settings.dart';
 import 'native_cookie.dart';
 
@@ -15,7 +15,7 @@ class CookieRefresher {
   DateTime? _lastRefreshAt;
 
   // 最短刷新间隔，避免频繁触发
-  Duration minInterval = const Duration(seconds: 45);
+  Duration minInterval = const Duration(seconds: 15);
   Duration timeout = const Duration(seconds: 15);
 
   bool get isCoolingDown {
@@ -23,77 +23,41 @@ class CookieRefresher {
     return DateTime.now().difference(_lastRefreshAt!) < minInterval;
   }
 
-  Future<bool> silentRefresh() async {
-    if (_refreshing || isCoolingDown) {
+  Future<bool> silentRefresh({bool force = false}) async {
+    if (_refreshing || (isCoolingDown && !force)) {
       if (kDebugMode) {
-        debugPrint('[CookieRefresher] Skip: refreshing=$_refreshing cooldown=$isCoolingDown');
+        debugPrint('[CookieRefresher] Skip: refreshing=$_refreshing cooldown=$isCoolingDown force=$force');
       }
       return false;
     }
-    final nav = AppNavigator.navigatorKey.currentState;
-    final overlay = nav?.overlay;
-    if (overlay == null) {
-      if (kDebugMode) {
-        debugPrint('[CookieRefresher] No overlay available');
-      }
-      return false;
-    }
-
     _refreshing = true;
     _lastRefreshAt = DateTime.now();
     try {
       final baseUrl = SettingsService.instance.value.baseUrl;
-      final target = Uri.parse(baseUrl).replace(queryParameters: {
+      final latest = Uri.parse(baseUrl).resolve('/latest');
+      final target = latest.replace(queryParameters: {
         't': DateTime.now().millisecondsSinceEpoch.toString(),
       });
-
-      final controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setNavigationDelegate(NavigationDelegate());
-
-      final done = Completer<void>();
-      Timer? timer;
-
-      // 使用 JS 轮询 document.readyState 作为兜底完成信号
-      void setupReadinessProbe() {
-        timer?.cancel();
-        timer = Timer.periodic(const Duration(milliseconds: 400), (_) async {
-          try {
-            final rs = await controller.runJavaScriptReturningResult('document.readyState');
-            final s = (rs is String ? rs : rs.toString()).replaceAll('"', '');
-            if (s.toLowerCase() == 'complete') {
-              if (!done.isCompleted) done.complete();
-            }
-          } catch (_) {}
-        });
-      }
-
-      final entry = OverlayEntry(builder: (_) {
-        // 保证 WebView 实际创建并运行：给一个 1x1 的可见尺寸，但完全透明不遮挡
-        return Positioned(
-          left: -1000, // 放到屏幕之外，降低渲染影响
-          top: -1000,
-          child: SizedBox(
-            width: 1,
-            height: 1,
-            child: WebViewWidget(controller: controller),
-          ),
-        );
-      });
-
-      overlay.insert(entry);
-      setupReadinessProbe();
-      // 启动加载
-      await controller.loadRequest(target);
-
-      // 超时控制
-      final to = Timer(timeout, () {
-        if (!done.isCompleted) done.complete();
-      });
-
-      await done.future;
-      to.cancel();
-      timer?.cancel();
+      final ua = SettingsService.instance.value.userAgent?.trim();
+      final settings = InAppWebViewSettings(
+        javaScriptEnabled: true,
+        thirdPartyCookiesEnabled: true,
+        transparentBackground: true,
+        userAgent: (ua != null && ua.isNotEmpty) ? ua : null,
+      );
+      final ready = Completer<void>();
+      final headless = HeadlessInAppWebView(
+        initialSettings: settings,
+        initialUrlRequest: URLRequest(url: WebUri(target.toString())),
+        onLoadStop: (_, __) {
+          if (!ready.isCompleted) ready.complete();
+        },
+        onReceivedError: (_, __, ___) {
+          if (!ready.isCompleted) ready.complete();
+        },
+      );
+      await headless.run();
+      await ready.future.timeout(timeout, onTimeout: (){});
 
       // 拉取原生 Cookie（可包含 HttpOnly）
       final header = (await NativeCookie.getCookieHeader(baseUrl)).trim();
@@ -110,12 +74,12 @@ class CookieRefresher {
       }
 
       if (header.isEmpty) {
-        entry.remove();
+        await headless.dispose();
         return false;
       }
 
       final changed = await _mergeAndSave(header);
-      entry.remove();
+      await headless.dispose();
       return changed;
     } catch (e) {
       if (kDebugMode) {
@@ -157,4 +121,3 @@ class CookieRefresher {
     return false;
   }
 }
-

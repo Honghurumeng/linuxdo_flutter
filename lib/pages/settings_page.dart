@@ -15,12 +15,14 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _proxy;
   late final TextEditingController _cookies;
   bool _saving = false;
+  bool _useWebViewBackend = false;
   
   void _syncFromSettings() {
     final s = SettingsService.instance.value;
     // 只同步 UA 与 Cookies 到输入框，便于查看/确认
     _ua.text = s.userAgent ?? '';
     _cookies.text = s.cookies ?? '';
+    if (mounted) setState(() {});
   }
 
   void _copyToClipboard(String text, String label) async {
@@ -44,6 +46,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _ua = TextEditingController(text: s.userAgent ?? '');
     _proxy = TextEditingController(text: s.proxy ?? '');
     _cookies = TextEditingController(text: s.cookies ?? '');
+    _useWebViewBackend = s.useWebViewBackend;
     SettingsService.instance.addListener(_syncFromSettings);
   }
 
@@ -63,7 +66,7 @@ class _SettingsPageState extends State<SettingsPage> {
         // 空字符串表示清空（使用默认 UA / 不带 Cookie）
         userAgent: _ua.text.trim().isEmpty ? '' : _ua.text.trim(),
         proxy: _proxy.text.trim().isEmpty ? '' : _proxy.text.trim(),
-        cookies: _cookies.text.trim().isEmpty ? '' : _cookies.text.trim(),
+        useWebViewBackend: _useWebViewBackend,
       );
       if (mounted) Navigator.of(context).pop(true);
     } finally {
@@ -86,6 +89,13 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          SwitchListTile(
+            value: _useWebViewBackend,
+            onChanged: (v) => setState(() => _useWebViewBackend = v),
+            title: const Text('使用后台 WebView 作为网络栈（更稳）'),
+            subtitle: const Text('在后台常驻一个 WebView，用浏览器同源 fetch 加载数据，自动携带并刷新 Cloudflare Cookie。'),
+          ),
+          const SizedBox(height: 8),
           // 移除 Base URL 设置，固定使用 https://linux.do
           const Text('User-Agent'),
           const SizedBox(height: 8),
@@ -124,15 +134,15 @@ class _SettingsPageState extends State<SettingsPage> {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 24),
-          const Text('Cookies（可选）'),
+          const Text('Cookies（只读镜像）'),
           const SizedBox(height: 8),
           TextField(
             controller: _cookies,
             maxLines: 3,
-            onChanged: (_) => setState(() {}),
+            readOnly: true,
             decoration: const InputDecoration(
-              labelText: 'Cookie 请求头（如 cf_clearance=...; _forum_session=...）',
-              hintText: '格式：k1=v1; k2=v2，留空则不带 Cookie',
+              labelText: '当前会话 Cookie（镜像，仅供查看/复制）',
+              hintText: '由 WebView 会话自动同步与刷新，不可编辑',
               border: OutlineInputBorder(),
             ).copyWith(
               suffixIcon: IconButton(
@@ -167,7 +177,7 @@ class _SettingsPageState extends State<SettingsPage> {
           }),
           const SizedBox(height: 8),
           Text(
-            '可在浏览器访问站点后，从开发者工具/扩展中复制 Cookie（至少含 cf_clearance）。注意隐私，不要随意外泄。',
+            '该字段为只读镜像：应用会自动从 WebView 会话同步并刷新 Cookie，不可编辑。若需更新，请在“站内登录”中完成验证后保存返回。注意隐私，不要外泄。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
