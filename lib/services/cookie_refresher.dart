@@ -59,8 +59,25 @@ class CookieRefresher {
       await headless.run();
       await ready.future.timeout(timeout, onTimeout: (){});
 
-      // 拉取原生 Cookie（可包含 HttpOnly）
-      final header = (await NativeCookie.getCookieHeader(baseUrl)).trim();
+      // 等待 Cloudflare 下发 cf_clearance（最多 timeout 时间，轮询）
+      final t0 = DateTime.now();
+      String header = '';
+      while (DateTime.now().difference(t0) < timeout) {
+        try {
+          final list = await CookieManager.instance().getCookies(url: WebUri(baseUrl));
+          if (list.isNotEmpty) {
+            header = list.map((e) => '${e.name}=${e.value}').join('; ');
+            final hasClearance = list.any((c) => c.name.toLowerCase() == 'cf_clearance');
+            if (hasClearance) break;
+          }
+        } catch (_) {}
+        await Future.delayed(const Duration(milliseconds: 400));
+      }
+
+      // 若 InAppWebView 拿不到，退回原生获取（可包含 HttpOnly）
+      if (header.trim().isEmpty) {
+        header = (await NativeCookie.getCookieHeader(baseUrl)).trim();
+      }
       if (kDebugMode) {
         final names = header.isEmpty
             ? []

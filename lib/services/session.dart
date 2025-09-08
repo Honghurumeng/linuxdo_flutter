@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import 'settings.dart';
+import 'image_memory_cache.dart';
 import 'webview_backend.dart';
 import 'cookie_refresher.dart';
 import 'native_cookie.dart';
@@ -60,26 +61,50 @@ class Session {
 
   // 统一二进制获取（图片等）：同策略
   Future<Map<String, dynamic>> fetchBytes(String url) async {
+    // 0) memory cache fast path
+    final cached = ImageMemoryCache.instance.get(url);
+    if (cached != null) {
+      return {
+        'bytes': cached.bytes,
+        'contentType': cached.contentType ?? '',
+      };
+    }
+
     await init();
     // 1) WebView fetch
     final res1 = await _fetchBytesViaWebView(url);
     if (res1 != null && !_isChallenged(res1['status'] as int, Map<String, String>.from(res1['headers'] as Map))) {
-      return res1;
+      final bytes = res1['bytes'] as Uint8List;
+      final ct = (res1['contentType'] ?? '').toString();
+      ImageMemoryCache.instance.set(url, bytes, contentType: ct);
+      return {
+        'bytes': bytes,
+        'contentType': ct,
+      };
     }
     // 2) 刷新后重试
     try { await CookieRefresher.instance.silentRefresh(force: true); } catch (_) {}
     final res2 = await _fetchBytesViaWebView(url);
     if (res2 != null && !_isChallenged(res2['status'] as int, Map<String, String>.from(res2['headers'] as Map))) {
-      return res2;
+      final bytes = res2['bytes'] as Uint8List;
+      final ct = (res2['contentType'] ?? '').toString();
+      ImageMemoryCache.instance.set(url, bytes, contentType: ct);
+      return {
+        'bytes': bytes,
+        'contentType': ct,
+      };
     }
     // 3) 原生兜底
     final uri = Uri.parse(url);
     final res = await _nativeGet(uri, image: true);
     _mergeSetCookie(res);
     if (res.statusCode == 200) {
+      final bytes = res.bodyBytes;
+      final ct = res.headers['content-type'] ?? '';
+      ImageMemoryCache.instance.set(url, bytes, contentType: ct);
       return {
-        'bytes': res.bodyBytes,
-        'contentType': res.headers['content-type'] ?? '',
+        'bytes': bytes,
+        'contentType': ct,
       };
     }
     throw HttpException('HTTP ${res.statusCode}', uri: uri);

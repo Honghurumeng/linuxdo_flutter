@@ -15,15 +15,25 @@ class WebViewBackend {
   InAppWebViewController? _controller;
   bool _starting = false;
   bool _started = false;
+  String? _uaApplied; // UA used by current headless instance
 
   bool get isStarted => _started && _controller != null;
 
   Future<void> ensureStarted() async {
-    if (isStarted || _starting) return;
+    final uaSetting = SettingsService.instance.value.userAgent?.trim();
+    // Restart headless WV if UA changed (Cloudflare binds cf_clearance to UA)
+    if (isStarted && _uaApplied != (uaSetting?.isNotEmpty == true ? uaSetting : null)) {
+      await dispose();
+    }
+    if (isStarted || _starting) {
+      // Even if already started, try to apply latest cookies
+      await _applyCookiesFromSettings();
+      return;
+    }
     _starting = true;
     try {
       final base = SettingsService.instance.value.baseUrl;
-      final ua = SettingsService.instance.value.userAgent?.trim();
+      final ua = uaSetting;
       final settings = InAppWebViewSettings(
         javaScriptEnabled: true,
         transparentBackground: true,
@@ -55,6 +65,8 @@ class WebViewBackend {
       // 最长等待 10s 视为 ready
       await c.future.timeout(const Duration(seconds: 10));
       _started = true;
+      _uaApplied = ua;
+      await _applyCookiesFromSettings();
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[WebViewBackend] start failed: $e');
@@ -71,6 +83,7 @@ class WebViewBackend {
     _headless = null;
     _controller = null;
     _started = false;
+    _uaApplied = null;
   }
 
   Future<Map<String, dynamic>> fetchJson(String url) async {
@@ -131,5 +144,42 @@ class WebViewBackend {
     final s = raw is String ? raw : raw?.toString() ?? '{}';
     final map = jsonDecode(s) as Map<String, dynamic>;
     return map;
+  }
+
+  Future<void> syncCookiesFromSettings() async {
+    await _applyCookiesFromSettings();
+  }
+
+  Future<void> _applyCookiesFromSettings() async {
+    try {
+      final cookies = SettingsService.instance.value.cookies?.trim();
+      if (cookies == null || cookies.isEmpty) return;
+      final base = SettingsService.instance.value.baseUrl;
+      final uri = WebUri(base);
+      final parsed = Uri.parse(base);
+      final parts = cookies.split(';');
+      for (final p in parts) {
+        final kv = p.trim();
+        final i = kv.indexOf('=');
+        if (i <= 0) continue;
+        final name = kv.substring(0, i).trim();
+        final value = kv.substring(i + 1).trim();
+        if (name.isEmpty || value.isEmpty) continue;
+        await CookieManager.instance().setCookie(
+          url: uri,
+          name: name,
+          value: value,
+          domain: parsed.host,
+          path: '/',
+          isSecure: parsed.scheme == 'https',
+          // heuristics: many auth cookies are HttpOnly
+          isHttpOnly: true,
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[WebViewBackend] apply cookies failed: $e');
+      }
+    }
   }
 }

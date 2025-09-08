@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../models/topic.dart';
 import '../services/settings.dart';
 import '../services/session.dart';
+import '../services/image_memory_cache.dart';
 // typed_data is available via flutter foundation; no direct import needed
 
 class LinuxDoApi {
@@ -190,6 +191,19 @@ class LinuxDoApi {
   // 获取图片字节和类型信息
   Future<Map<String, dynamic>> fetchImageBytesWithType(String url) async {
     final candidates = <String>{toOriginalImageUrl(url), url}.toList();
+    // 0) memory cache fast path (exact URL only)
+    final c = ImageMemoryCache.instance.get(url);
+    if (c != null) {
+      final ct = (c.contentType ?? '').toLowerCase();
+      final isSvg = ct.contains('svg') || ct.contains('image/svg+xml');
+      if (kDebugMode) {
+        debugPrint('[LinuxDoApi] IMG cache ${c.length}B $url');
+      }
+      return {
+        'bytes': c.bytes,
+        'isSvg': isSvg,
+      };
+    }
     for (final u in candidates) {
       try {
         final r = await Session.instance.fetchBytes(u);

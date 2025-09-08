@@ -5,6 +5,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/settings.dart';
 import '../services/native_cookie.dart';
+import '../services/webview_backend.dart';
 
 class WebLoginPage extends StatefulWidget {
   const WebLoginPage({
@@ -110,6 +111,9 @@ class _WebLoginPageState extends State<WebLoginPage> {
 
       // 5) 保存（Cloudflare 会将 cf_clearance 与 UA 绑定）
       await SettingsService.instance.update(cookies: raw, userAgent: ua.isEmpty ? null : ua);
+      // 应用新 UA（若变更则重启后台 WebView），并同步 Cookies
+      await WebViewBackend.instance.ensureStarted();
+      await WebViewBackend.instance.syncCookiesFromSettings();
       if (!mounted) return;
       final hasClearance = nativeMap.keys.any((k) => k.toLowerCase() == 'cf_clearance');
       ScaffoldMessenger.of(context).showSnackBar(
