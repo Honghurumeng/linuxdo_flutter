@@ -18,6 +18,8 @@ class LinuxDoApi {
 
   Map<String, String> _headers({String? ua}) {
     final cookies = SettingsService.instance.value.cookies?.trim();
+    final bu = Uri.parse(_baseUrl);
+    final origin = '${bu.scheme}://${bu.host}${bu.hasPort ? ':${bu.port}' : ''}';
     final h = {
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
@@ -28,6 +30,12 @@ class LinuxDoApi {
             // 默认使用桌面 Chrome UA（按用户要求）
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'),
         'Referer': _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/',
+        'Origin': origin,
+        // 模拟浏览器请求特征，降低 Cloudflare/BIC 误判
+        'X-Requested-With': 'XMLHttpRequest',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+        'Sec-Fetch-Dest': 'empty',
         'Connection': 'keep-alive',
       };
     if (cookies != null && cookies.isNotEmpty) {
@@ -43,9 +51,15 @@ class LinuxDoApi {
         ? s.userAgent!.trim()
         : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36';
     final ref = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
+    final bu = Uri.parse(_baseUrl);
+    final origin = '${bu.scheme}://${bu.host}${bu.hasPort ? ':${bu.port}' : ''}';
     final h = <String, String>{
       'User-Agent': ua,
       'Referer': ref,
+      'Origin': origin,
+      'Sec-Fetch-Mode': 'no-cors',
+      'Sec-Fetch-Site': 'same-origin',
+      'Sec-Fetch-Dest': 'image',
       'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
       'Connection': 'keep-alive',
@@ -113,11 +127,30 @@ class LinuxDoApi {
           debugPrint('[LinuxDoApi] Cookie: ${cookieNames.join(', ')}');
         }
       }
-      final response = await client.get(uri, headers: h1);
+      http.Response response = await client.get(uri, headers: h1);
       if (kDebugMode) {
         debugPrint('[LinuxDoApi] <-- ${response.statusCode} GET $uri');
       }
-      _mergeSetCookie(response);
+      final merged = _mergeSetCookie(response);
+
+      // 如果被 Cloudflare/服务端拦截（常见 403/503/520），且发现 Set-Cookie 发生了变更（例如下发新的 cf_clearance），
+      // 则自动重试一次以提升稳定性，避免用户看到“需要登录”。
+      final sc = response.statusCode;
+      final server = (response.headers['server'] ?? '').toLowerCase();
+      final cfRay = response.headers.containsKey('cf-ray');
+      final maybeChallenged = (sc == 403 || sc == 503 || sc == 520) && (merged || server.contains('cloudflare') || cfRay);
+      if (maybeChallenged) {
+        if (kDebugMode) {
+          debugPrint('[LinuxDoApi] Challenge suspected, retrying once with refreshed cookies...');
+        }
+        // 以最新 Cookie 再请求一次
+        final h2 = _headers();
+        response = await client.get(uri, headers: h2);
+        if (kDebugMode) {
+          debugPrint('[LinuxDoApi] <-- RETRY ${response.statusCode} GET $uri');
+        }
+        _mergeSetCookie(response);
+      }
       return response;
     } finally {
       client.close();
@@ -125,9 +158,9 @@ class LinuxDoApi {
   }
 
   // 从响应头中合并 Set-Cookie（若有）到本地 Cookies
-  void _mergeSetCookie(http.Response res) {
+  bool _mergeSetCookie(http.Response res) {
     final setCookie = res.headers['set-cookie'];
-    if (setCookie == null || setCookie.isEmpty) return;
+    if (setCookie == null || setCookie.isEmpty) return false;
     final existing = SettingsService.instance.value.cookies ?? '';
     final current = <String, String>{}
       ..addEntries(existing.split(';').map((e) => e.trim()).where((e) => e.contains('=')).map((kv) {
@@ -144,14 +177,21 @@ class LinuxDoApi {
         if (name.toLowerCase() == 'path' || name.toLowerCase() == 'expires' || name.toLowerCase() == 'httponly' || name.toLowerCase() == 'secure' || name.toLowerCase() == 'samesite' || name.toLowerCase() == 'domain') {
           continue;
         }
+        // 忽略服务端要求删除的 cookie 值（常见 value 为 'deleted' 或空），避免短时间内误删 cf_clearance 等关键值
+        final v = value.trim();
+        if (v.isEmpty || v.toLowerCase() == 'deleted') continue;
         current[name] = value;
       }
     }
     final merged = current.entries.map((e) => '${e.key}=${e.value}').join('; ');
-    SettingsService.instance.update(cookies: merged);
-    if (kDebugMode) {
-      debugPrint('[LinuxDoApi] Set-Cookie merged -> ${current.keys.join(', ')}');
+    final changed = merged.trim() != existing.trim();
+    if (changed) {
+      SettingsService.instance.update(cookies: merged);
+      if (kDebugMode) {
+        debugPrint('[LinuxDoApi] Set-Cookie merged -> ${current.keys.join(', ')}');
+      }
     }
+    return changed;
   }
 
   Future<LatestPage> fetchLatest({String? moreTopicsUrl, int? page}) async {

@@ -66,6 +66,12 @@ class SettingsService extends ChangeNotifier {
         ? _value.cookies
         : (cookies.isEmpty ? null : cookies);
 
+    // 若没有任何实际变化，直接返回，避免不必要的存储与通知（可减少页面无意义刷新）
+    final noChange = newUa == _value.userAgent && newProxy == _value.proxy && newCookies == _value.cookies;
+    if (noChange) {
+      return;
+    }
+
     _value = AppSettings(
       baseUrl: _value.baseUrl,
       userAgent: newUa,
