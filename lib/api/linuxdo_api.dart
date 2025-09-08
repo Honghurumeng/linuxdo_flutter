@@ -8,6 +8,7 @@ import 'package:http/io_client.dart';
 
 import '../models/topic.dart';
 import '../services/settings.dart';
+import '../services/cookie_refresher.dart';
 
 class LinuxDoApi {
   LinuxDoApi({this.baseUrl});
@@ -150,6 +151,23 @@ class LinuxDoApi {
           debugPrint('[LinuxDoApi] <-- RETRY ${response.statusCode} GET $uri');
         }
         _mergeSetCookie(response);
+
+        // 若依然被拦截，则尝试后台静默刷新 Cookie（隐形 WebView）并最终再试一次
+        final sc2 = response.statusCode;
+        final stillChallenged = (sc2 == 403 || sc2 == 503 || sc2 == 520);
+        if (stillChallenged) {
+          final didRefresh = await CookieRefresher.instance.silentRefresh();
+          if (didRefresh) {
+            if (kDebugMode) {
+              debugPrint('[LinuxDoApi] Cookies refreshed in background, final retry...');
+            }
+            response = await client.get(uri, headers: _headers());
+            if (kDebugMode) {
+              debugPrint('[LinuxDoApi] <-- FINAL ${response.statusCode} GET $uri');
+            }
+            _mergeSetCookie(response);
+          }
+        }
       }
       return response;
     } finally {
@@ -315,10 +333,24 @@ class LinuxDoApi {
       late Uri uri;
       for (final u in candidates) {
         uri = Uri.parse(u);
-        res = await client.get(uri, headers: imageHeaders());
+        final h = imageHeaders();
+        res = await client.get(uri, headers: h);
         if (kDebugMode) {
           debugPrint('[LinuxDoApi] IMG try ${res.statusCode} $uri');
           debugPrint('[LinuxDoApi] Content-Type: ${res.headers['content-type']}');
+          final cookieHeader = h['Cookie'] ?? '';
+          if (cookieHeader.isNotEmpty) {
+            final names = cookieHeader
+                .split(';')
+                .map((e) => e.trim())
+                .where((e) => e.contains('='))
+                .map((e) => e.substring(0, e.indexOf('=')))
+                .toList();
+            debugPrint('[LinuxDoApi] IMG Cookie: ${names.join(', ')}');
+          } else {
+            debugPrint('[LinuxDoApi] IMG Cookie: (none)');
+          }
+          debugPrint('[LinuxDoApi] IMG UA: ${h['User-Agent']}');
         }
         if (res.statusCode == 200) {
           final contentType = res.headers['content-type'] ?? '';

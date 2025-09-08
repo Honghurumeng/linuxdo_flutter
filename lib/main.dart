@@ -4,6 +4,7 @@ import 'dart:io';
 import 'pages/home_page.dart';
 import 'services/settings.dart';
 import 'services/http_overrides.dart';
+import 'services/app_navigator.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1565C0)),
         useMaterial3: true,
       ),
+      navigatorKey: AppNavigator.navigatorKey,
       home: const HomePage(),
     );
   }
